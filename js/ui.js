@@ -9,13 +9,6 @@ function escapeHtml(str) {
   }[c]));
 }
 
-function iconForStation(st) {
-  if (st.type === 'final') return '🪷';
-  if (st.type === 'site') return '🛕';
-  if (st.type === 'story') return '⭐';
-  return '📍';
-}
-
 function $(id) { return document.getElementById(id); }
 
 const DICE_PIPS = {
@@ -81,38 +74,6 @@ function wireSetupEvents() {
 
 // ---------------- 主界面渲染 ----------------
 
-function renderLane(elId, path, routeKey, state) {
-  const el = $(elId);
-  const nodesHtml = path.map((st, idx) => {
-    const pos = idx + 1;
-    const classes = ['station-node', st.type, st.crossover ? 'crossover' : ''].filter(Boolean).join(' ');
-    return `<div class="${classes}">
-      <div class="st-icon">${iconForStation(st)}</div>
-      <div class="st-name">${escapeHtml(st.name)}</div>
-      <div class="token-row" data-route="${routeKey}" data-pos="${pos}"></div>
-    </div>`;
-  }).join('');
-  el.innerHTML = `<div class="home-node"><span class="st-icon">🏯</span>长安<div class="token-row" data-route="${routeKey}" data-pos="0"></div></div>${nodesHtml}`;
-
-  state.teams.forEach(team => {
-    if (team.route !== routeKey) return;
-    const slot = el.querySelector(`.token-row[data-pos="${team.position}"]`);
-    if (slot) {
-      const tok = document.createElement('span');
-      tok.className = 'token';
-      tok.style.border = `2px solid ${team.color}`;
-      tok.textContent = team.icon;
-      tok.title = team.name;
-      slot.appendChild(tok);
-    }
-  });
-}
-
-function renderBoard(state) {
-  renderLane('lane-land', DR.LAND_PATH, 'land', state);
-  renderLane('lane-sea', DR.SEA_PATH, 'sea', state);
-}
-
 function renderTeamsPanel(state) {
   const el = $('teams-panel');
   el.innerHTML = state.teams.map((team, i) => {
@@ -122,7 +83,7 @@ function renderTeamsPanel(state) {
     if (team.completed) posLabel = '已回长安';
     else if (team.position === 0) posLabel = '长安(出发前)';
     else posLabel = (team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH)[team.position - 1].name;
-    return `<div class="team-card ${i === state.activeIndex ? 'active' : ''}" style="border-left-color:${team.color}">
+    return `<div class="team-card ${i === state.activeIndex ? 'active' : ''}" data-team-id="${team.id}" style="border-left-color:${team.color}">
       <div class="tc-head"><span>${team.icon} ${escapeHtml(team.name)}</span><span class="tc-merit">${team.merit} 功德</span></div>
       <div class="tc-sub">${team.route === 'land' ? '🐫 陆路' : '⛵ 海路'} · ${escapeHtml(posLabel)}
         ${team.direction === 'back' && !team.completed ? '(归途)' : ''}
@@ -130,6 +91,14 @@ function renderTeamsPanel(state) {
       <div class="tc-frags">${frags}</div>
     </div>`;
   }).join('');
+}
+
+function wireTeamsPanelClick() {
+  $('teams-panel').addEventListener('click', e => {
+    const card = e.target.closest('.team-card');
+    if (!card) return;
+    DR.Map.pulseTeamToken(+card.dataset.teamId);
+  });
 }
 
 function renderBank(state) { $('bank-display').textContent = state.bank; }
@@ -149,7 +118,7 @@ function renderPhaseBanner(state) {
 
 function renderAll() {
   const state = DR.state;
-  renderBoard(state);
+  DR.Map.layoutTokens(state);
   renderTeamsPanel(state);
   renderBank(state);
   renderTimer(state);
@@ -408,10 +377,11 @@ function onRollClick() {
   }, 70);
 }
 
-function onRolled() {
+async function onRolled() {
   const state = DR.state;
+  const fromPos = DR.Game.activeTeam(state).position;
   const result = DR.Game.moveAndResolve(state);
-  renderTeamsPanel(state); renderBoard(state); renderBank(state);
+  renderTeamsPanel(state); renderBank(state);
 
   if (result.skipped) {
     DR.Audio.trial();
@@ -419,6 +389,9 @@ function onRolled() {
     showNextOnly();
     return;
   }
+
+  await DR.Map.animateActiveMove(state, fromPos);
+
   if (result.arrivedHome) {
     DR.Audio.finish();
     showModal('home', { team: result.team });
@@ -504,8 +477,8 @@ DR.UI = {
   renderTeamConfigList,
   wireSetupEvents,
   renderAll,
-  renderBoard,
   renderTeamsPanel,
+  wireTeamsPanelClick,
   renderBank,
   renderTimer,
   renderPhaseBanner,

@@ -76,33 +76,47 @@
     </div>
   </header>
 
-  <div id="board-wrap">
-    <div class="lane-label">🐫 陆路</div>
-    <div class="lane" id="lane-land"></div>
-    <div class="lane-label">⛵ 海路</div>
-    <div class="lane" id="lane-sea"></div>
-  </div>
-
   <div id="main-lower">
     <div id="teams-panel"></div>
 
-    <div id="turn-control">
-      <div id="active-team-banner"></div>
-      <div id="dice-area">
-        <div id="dice-face" class="die">
-          <span class="pip" data-pip="1"></span><span class="pip" data-pip="2"></span><span class="pip" data-pip="3"></span>
-          <span class="pip" data-pip="4"></span><span class="pip" data-pip="5"></span><span class="pip" data-pip="6"></span>
-          <span class="pip" data-pip="7"></span><span class="pip" data-pip="8"></span><span class="pip" data-pip="9"></span>
+    <div id="main-stage">
+      <div id="map-wrap">
+        <svg id="map-svg" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+        <div id="map-markers"></div>
+        <div class="map-legend">
+          <span><i class="leg-swatch leg-land"></i>🐫 陆路</span>
+          <span><i class="leg-swatch leg-sea"></i>⛵ 海路</span>
+          <span>🛕 圣地</span>
+          <span>⭐ 剧情</span>
+          <span>🪷 终点</span>
+          <span class="leg-hint">点击地图上的站点可查看小知识</span>
         </div>
-        <button id="btn-roll" class="btn-primary btn-big">🎲 掷骰子</button>
       </div>
-      <div id="action-area"></div>
-      <button id="btn-next-team" class="btn-secondary btn-big hidden">下一队 ➜</button>
+
+      <div id="turn-control">
+        <div id="active-team-banner"></div>
+        <div id="dice-area">
+          <div id="dice-face" class="die">
+            <span class="pip" data-pip="1"></span><span class="pip" data-pip="2"></span><span class="pip" data-pip="3"></span>
+            <span class="pip" data-pip="4"></span><span class="pip" data-pip="5"></span><span class="pip" data-pip="6"></span>
+            <span class="pip" data-pip="7"></span><span class="pip" data-pip="8"></span><span class="pip" data-pip="9"></span>
+          </div>
+          <button id="btn-roll" class="btn-primary btn-big">🎲 掷骰子</button>
+        </div>
+        <div id="action-area"></div>
+        <button id="btn-next-team" class="btn-secondary btn-big hidden">下一队 ➜</button>
+      </div>
     </div>
   </div>
 
   <div id="log-ticker"></div>
 </section>
+
+<div id="station-tooltip" class="hidden">
+  <button class="st-tip-close" aria-label="关闭">×</button>
+  <h4 class="st-tip-title"></h4>
+  <p class="st-tip-body"></p>
+</div>
 
 <!-- ===================== 结算界面 ===================== -->
 <section id="screen-end" class="screen">
@@ -129,6 +143,7 @@
 <script src="js/data.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/game.js"></script>
+<script src="js/map.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
 </body>

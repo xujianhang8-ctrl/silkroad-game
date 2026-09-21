@@ -32,7 +32,7 @@ DR.Audio = (function () {
 
   return {
     dice() { beep(320, 0.08, 'square', 0.06); },
-    move() { beep(440, 0.05, 'triangle', 0.05); },
+    hop() { beep(500, 0.045, 'triangle', 0.045); },
     good() {
       beep(523, 0.12, 'sine', 0.07);
       setTimeout(() => beep(659, 0.15, 'sine', 0.07), 90);

@@ -189,53 +189,84 @@ button {
 .btn-danger { background: rgba(178, 80, 59, 0.5); }
 .btn-danger:hover { background: var(--terracotta); }
 
-#board-wrap {
-  flex: 0 0 auto;
-  padding: 10px 20px;
-  background: linear-gradient(180deg, #241f45, #201c3a);
-  max-height: 34vh;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-.lane-label { font-size: 13px; color: var(--gold-light); opacity: 0.85; margin: 4px 0 2px; }
-.lane {
-  display: flex; align-items: flex-end; gap: 6px; padding-bottom: 8px;
-  position: relative; min-height: 78px;
-}
-.lane::before {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 30px;
-  height: 2px; background: rgba(255,255,255,0.15);
-}
-.station-node {
-  flex: 0 0 auto; width: 82px; min-height: 62px;
-  background: rgba(255,255,255,0.06); border: 2px solid rgba(255,255,255,0.15);
-  border-radius: 10px; padding: 4px; text-align: center; position: relative;
-}
-.station-node.site { border-color: var(--gold); background: rgba(201,153,47,0.18); }
-.station-node.final { border-color: var(--terracotta); background: rgba(178,80,59,0.25); width: 96px; }
-.station-node.crossover::after {
-  content: "⇄"; position: absolute; top: -10px; right: -6px; font-size: 14px;
-  background: var(--jade); border-radius: 50%; width: 20px; height: 20px; line-height: 20px;
-}
-.station-node .st-name { font-size: 10px; line-height: 1.2; display: block; margin-top: 2px; color: #eee; }
-.station-node .st-icon { font-size: 16px; }
-.token-row { display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; min-height: 20px; margin-top: 2px; }
-.token {
-  font-size: 15px; width: 22px; height: 22px; border-radius: 50%; background: white;
-  display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-  animation: pop 0.4s ease;
-}
-.home-node {
-  flex: 0 0 auto; width: 70px; text-align: center; font-size: 12px; color: var(--gold-light);
-  align-self: center;
-}
-.home-node .st-icon { font-size: 26px; display: block; }
-
 #main-lower { flex: 1 1 auto; display: flex; overflow: hidden; }
 #teams-panel {
-  flex: 0 0 300px; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  flex: 0 0 260px; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
   background: rgba(0,0,0,0.15);
 }
+
+/* ---- 地图 ---- */
+#main-stage {
+  flex: 1 1 auto; display: flex; flex-direction: column; align-items: center;
+  overflow: hidden; min-width: 0; padding: 10px 14px 0; gap: 8px;
+}
+#map-wrap {
+  position: relative; flex: 0 0 auto; width: 100%; aspect-ratio: 1000 / 600;
+  border-radius: 16px; overflow: hidden; border: 3px solid #8a6a2f;
+  box-shadow: var(--paper-shadow); background: #dcc98f;
+}
+#map-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#map-markers { position: absolute; inset: 0; pointer-events: none; }
+
+.route-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.route-land { stroke: #8a5a2f; stroke-width: 5; stroke-dasharray: 2 12; }
+.route-sea { stroke: #2f6483; stroke-width: 5; stroke-dasharray: 2 12; }
+.compass-label, .cartouche-title, .cartouche-sub {
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
+.compass-label { font-size: 16px; fill: #8a6a2f; font-weight: bold; }
+.cartouche-title { font-size: 17px; fill: #b2503b; font-weight: bold; }
+.cartouche-sub { font-size: 12px; fill: #5a4a30; }
+
+.station-marker {
+  position: absolute; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center;
+  cursor: pointer; pointer-events: auto; z-index: 5;
+}
+.station-marker .sm-icon {
+  position: relative; width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255,255,255,0.88); border: 2px solid #8a6a2f;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  transition: transform 0.15s;
+}
+.station-marker:hover .sm-icon { transform: scale(1.2); }
+.station-marker.site .sm-icon { border-color: var(--gold); background: #fff3d6; }
+.station-marker.final .sm-icon { border-color: var(--terracotta); background: #ffe3da; width: 36px; height: 36px; font-size: 19px; }
+.station-marker.story .sm-icon { border-color: var(--jade); }
+.station-marker .sm-label {
+  font-size: 10.5px; color: #2c2418; background: rgba(244,236,216,0.9);
+  padding: 1px 5px; border-radius: 6px; margin-top: 3px; white-space: nowrap;
+  font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.station-marker.label-above { flex-direction: column-reverse; }
+.station-marker.label-above .sm-label { margin-top: 0; margin-bottom: 3px; }
+.station-marker.crossover .sm-icon::after {
+  content: "⇄"; position: absolute; top: -9px; right: -9px; background: var(--jade); color: white;
+  width: 16px; height: 16px; border-radius: 50%; font-size: 10px; line-height: 16px; text-align: center;
+}
+.home-marker .sm-icon { width: 38px; height: 38px; font-size: 21px; background: #fff3d6; border-color: var(--terracotta); }
+
+.token {
+  position: absolute; z-index: 10;
+  font-size: 15px; width: 25px; height: 25px; border-radius: 50%; background: white;
+  border: 2px solid #333; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.45);
+  transition: left 0.22s linear, top 0.22s linear;
+  pointer-events: auto;
+}
+.token-pulse { animation: tokenPulse 0.9s ease; }
+
+.map-legend {
+  position: absolute; right: 8px; bottom: 8px; background: rgba(244,236,216,0.92);
+  border: 2px solid var(--gold); border-radius: 10px; padding: 5px 10px;
+  display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--ink);
+  max-width: 78%; pointer-events: none; align-items: center;
+}
+.leg-swatch { display: inline-block; width: 14px; height: 3px; margin-right: 3px; vertical-align: middle; border-radius: 2px; }
+.leg-land { background: #8a5a2f; }
+.leg-sea { background: #2f6483; }
+.leg-hint { opacity: 0.7; font-style: italic; }
 .team-card {
   border-radius: 12px; padding: 8px 10px; background: rgba(255,255,255,0.06);
   border-left: 6px solid var(--gold); font-size: 13px;
@@ -249,8 +280,8 @@ button {
 .tc-done { color: var(--jade); font-weight: bold; }
 
 #turn-control {
-  flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 16px; gap: 12px; overflow-y: auto;
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 10px; gap: 8px; width: 100%;
 }
 #active-team-banner { font-size: clamp(20px, 2.4vw, 32px); font-weight: bold; text-align: center; }
 #dice-area { display: flex; align-items: center; gap: 20px; }
@@ -325,6 +356,21 @@ button {
 
 .modal-buttons { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
 
+/* ===================== 站点小知识提示框 ===================== */
+#station-tooltip {
+  position: fixed; transform: translate(-50%, -100%);
+  background: var(--parchment); border: 2px solid var(--gold); border-radius: 12px;
+  padding: 10px 30px 10px 14px; max-width: 260px; box-shadow: var(--paper-shadow); z-index: 40;
+}
+#station-tooltip.hidden { display: none; }
+#station-tooltip .st-tip-title { margin: 0 0 4px; color: var(--terracotta); font-size: 15px; }
+#station-tooltip .st-tip-body { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink); }
+#station-tooltip .st-tip-close {
+  position: absolute; top: 2px; right: 6px; background: none; border: none; font-size: 18px;
+  color: #888; cursor: pointer; line-height: 1; padding: 4px;
+}
+#station-tooltip .st-tip-close:hover { color: var(--terracotta); }
+
 /* ===================== 结算界面 ===================== */
 #screen-end {
   background: radial-gradient(circle at 50% 0%, #3a2f66 0%, var(--night) 65%);
@@ -351,6 +397,10 @@ button {
 
 /* ===================== 动画 ===================== */
 @keyframes pop { from { transform: scale(0.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes tokenPulse {
+  0%, 100% { box-shadow: 0 2px 5px rgba(0,0,0,0.45); }
+  40% { box-shadow: 0 0 0 12px rgba(255,255,255,0.55), 0 2px 5px rgba(0,0,0,0.45); }
+}
 @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }

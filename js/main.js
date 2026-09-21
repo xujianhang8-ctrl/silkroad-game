@@ -40,6 +40,9 @@ var DR = window.DR || (window.DR = {});
     DR.state.soundOn = DR.setup.soundOn;
     $('btn-mute').textContent = DR.state.soundOn ? '🔊' : '🔇';
     DR.UI.showScreen('screen-game');
+    DR.Map.renderMapChrome();
+    DR.Map.initTokens(DR.state);
+    DR.Map.fitMapBox();
     DR.UI.beginTurn();
     if (timerHandle) clearInterval(timerHandle);
     timerHandle = setInterval(tick, 1000);
@@ -111,5 +114,8 @@ var DR = window.DR || (window.DR = {});
 
     wireGameEvents();
     wireKeyboard();
+    DR.UI.wireTeamsPanelClick();
+    DR.Map.wireTooltipDismiss();
+    window.addEventListener('resize', () => { if (DR.state) DR.Map.fitMapBox(); });
   });
 })();
