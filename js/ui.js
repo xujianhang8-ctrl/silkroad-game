@@ -103,6 +103,32 @@ function wireTeamsPanelClick() {
   });
 }
 
+// 六度残页速览:侧栏常驻的小图鉴,渲染一次即可(内容不随对局变化)。
+function renderParamitaLegend() {
+  const el = $('paramita-legend');
+  if (!el || el.childElementCount) return;
+  el.innerHTML = `
+    <div class="pl-title">六度残页 · 功德价值</div>
+    <div class="pl-grid">
+      ${DR.PARAMITAS.map(p => `
+        <span class="pl-item" style="--pc:${p.color}">
+          <span class="pl-icon">${p.icon}</span>${p.name}<span class="pl-val">${p.value}</span>
+        </span>
+      `).join('')}
+    </div>
+  `;
+}
+
+// 道路见闻:把此前从未真正显示内容的底部日志条,改成侧栏里一直有内容可看的活动记录。
+function renderJourneyLog(state) {
+  const el = $('journey-log-list');
+  if (!el) return;
+  const entries = state.log.slice(-30).reverse();
+  el.innerHTML = entries.length
+    ? entries.map(msg => `<div class="log-entry">${escapeHtml(msg)}</div>`).join('')
+    : '<div class="log-empty">旅程尚未开始,快掷骰子出发吧!</div>';
+}
+
 function renderBank(state) { $('bank-display').textContent = state.bank; }
 
 function renderTimer(state) {
@@ -143,12 +169,16 @@ function renderPhaseTracker(state) {
 
 function renderAll() {
   const state = DR.state;
+  // turn-control's height varies with how many action buttons are showing, so the map
+  // must be re-fitted before tokens are laid out, or its percentage coordinates drift.
+  DR.Map.fitMapBox();
   DR.Map.layoutTokens(state);
   renderTeamsPanel(state);
   renderBank(state);
   renderTimer(state);
   renderPhaseBanner(state);
   renderPhaseTracker(state);
+  renderJourneyLog(state);
 }
 
 // ---------------- 弹窗 ----------------
@@ -236,7 +266,7 @@ function renderQuestionModal() {
       else if (i2 === idx) btn2.classList.add('wrong');
     });
     if (res.correct) DR.Audio.correct(); else DR.Audio.trial();
-    renderTeamsPanel(DR.state); renderBank(DR.state);
+    renderTeamsPanel(DR.state); renderBank(DR.state); renderJourneyLog(DR.state);
     const note = document.createElement('p');
     note.className = 'modal-positive-note';
     note.textContent = '📖 ' + res.note;
@@ -320,7 +350,7 @@ function renderTradeModal() {
   if (tradeTab === 'buy') {
     box.querySelectorAll('.buy-frag-btn').forEach(b => b.addEventListener('click', e => {
       DR.Game.buyFragment(DR.state, e.currentTarget.dataset.key);
-      DR.Audio.click(); renderTeamsPanel(DR.state); renderBank(DR.state); renderModal();
+      DR.Audio.click(); renderTeamsPanel(DR.state); renderBank(DR.state); renderJourneyLog(DR.state); renderModal();
     }));
   }
   if (tradeTab === 'swap') {
@@ -330,7 +360,7 @@ function renderTradeModal() {
     box.querySelectorAll('.swap-take-btn').forEach(b => b.addEventListener('click', e => {
       if (!swapGive) return;
       DR.Game.swapFragment(DR.state, swapGive, e.currentTarget.dataset.key);
-      swapGive = null; DR.Audio.click(); renderTeamsPanel(DR.state); renderModal();
+      swapGive = null; DR.Audio.click(); renderTeamsPanel(DR.state); renderJourneyLog(DR.state); renderModal();
     }));
   }
   if (tradeTab === 'sell') {
@@ -339,7 +369,7 @@ function renderTradeModal() {
       const keys = [];
       DR.PARAMITAS.forEach(p => { for (let i = 0; i < team.backpack[p.key]; i++) keys.push(p.key); });
       const res = DR.Game.sellFragments(DR.state, keys);
-      if (res.ok) { DR.Audio.good(); renderTeamsPanel(DR.state); renderBank(DR.state); renderModal(); }
+      if (res.ok) { DR.Audio.good(); renderTeamsPanel(DR.state); renderBank(DR.state); renderJourneyLog(DR.state); renderModal(); }
     });
   }
   $('btn-close-trade').addEventListener('click', hideModal);
@@ -412,11 +442,15 @@ function showActionArea(actions) {
     btn.addEventListener('click', a.fn);
     area.appendChild(btn);
   });
+  // Button count changes turn-control's height (e.g. 0 vs 3 market actions), so the
+  // map needs to be re-fitted or it can leave the dice/action controls pushed off-screen.
+  DR.Map.fitMapBox();
 }
 
 function showNextOnly() {
   $('btn-next-team').classList.remove('hidden');
   $('btn-next-team').disabled = false;
+  DR.Map.fitMapBox();
 }
 
 function beginTurn() {
@@ -473,7 +507,7 @@ async function onRolled() {
   const state = DR.state;
   const fromPos = DR.Game.activeTeam(state).position;
   const result = DR.Game.moveAndResolve(state);
-  renderTeamsPanel(state); renderBank(state);
+  renderTeamsPanel(state); renderBank(state); renderJourneyLog(state);
 
   if (result.skipped) {
     state.turnPhase = 'end';
@@ -518,6 +552,7 @@ function afterLandingModalClosed(result) {
   state.turnPhase = 'market';
   renderPhaseTracker(state);
   renderTeamsPanel(state);
+  renderJourneyLog(state);
   const actions = [];
   if (result.canTrade) {
     actions.push({ label: '🛕 前往结缘', fn: () => showModal('trade', { station: result.station }) });
@@ -606,6 +641,8 @@ DR.UI = {
   renderTimer,
   renderPhaseBanner,
   renderPhaseTracker,
+  renderParamitaLegend,
+  renderJourneyLog,
   beginTurn,
   onRollClick,
   onRolled,

@@ -13,6 +13,30 @@
   --paper-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
   --radius: 16px;
   font-size: 16px;
+
+  /* Soft lantern bokeh + a scattered starfield, layered behind the setup/end cards so wide
+     projector screens don't read as flat empty space around the centered card. */
+  --night-decor:
+    radial-gradient(circle at 12% 14%, rgba(232,196,104,0.20) 0%, rgba(232,196,104,0) 32%),
+    radial-gradient(circle at 88% 20%, rgba(232,196,104,0.15) 0%, rgba(232,196,104,0) 30%),
+    radial-gradient(circle at 18% 86%, rgba(178,80,59,0.18) 0%, rgba(178,80,59,0) 30%),
+    radial-gradient(circle at 85% 82%, rgba(232,196,104,0.14) 0%, rgba(232,196,104,0) 28%),
+    radial-gradient(1.6px 1.6px at 5% 8%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1.4px 1.4px at 14% 22%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1.6px 1.6px at 9% 45%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1.4px 1.4px at 6% 68%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.6px 1.6px at 18% 90%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1.4px 1.4px at 32% 6%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1.4px 1.4px at 41% 30%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.6px 1.6px at 50% 10%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1.8px 1.8px at 62% 7%, rgba(255,255,255,0.45), transparent),
+    radial-gradient(1.4px 1.4px at 70% 24%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.4px 1.4px at 58% 60%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.6px 1.6px at 78% 14%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1.6px 1.6px at 85% 44%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1.8px 1.8px at 92% 64%, rgba(255,255,255,0.45), transparent),
+    radial-gradient(1.4px 1.4px at 95% 88%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.4px 1.4px at 75% 93%, rgba(255,255,255,0.3), transparent);
 }
 
 * { box-sizing: border-box; }
@@ -45,13 +69,15 @@ button {
 
 /* ===================== 设置界面 ===================== */
 #screen-setup {
-  background: radial-gradient(circle at 50% 0%, #3a2f66 0%, var(--night) 65%);
+  position: relative;
+  background: var(--night-decor), radial-gradient(circle at 50% 0%, #3a2f66 0%, var(--night) 65%);
   overflow-y: auto;
   align-items: center;
   padding: 3vh 2vw;
 }
 .setup-wrap {
-  max-width: 980px;
+  position: relative; z-index: 1;
+  max-width: min(1080px, 94vw);
   width: 100%;
   background: var(--parchment);
   border-radius: 24px;
@@ -161,7 +187,7 @@ button {
 .teacher-notes-more { opacity: 0.75; font-style: italic; margin: 6px 0 0; }
 
 /* ===================== 游戏主界面 ===================== */
-#screen-game { background: var(--night); color: white; }
+#screen-game { background: var(--night-decor), var(--night); color: white; }
 
 #game-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -191,10 +217,52 @@ button {
 .btn-danger:hover { background: var(--terracotta); }
 
 #main-lower { flex: 1 1 auto; display: flex; overflow: hidden; }
-#teams-panel {
-  flex: 0 0 260px; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+#side-panel {
+  flex: 0 0 260px; display: flex; flex-direction: column; min-height: 0;
   background: rgba(0,0,0,0.15);
 }
+#teams-panel {
+  flex: 0 0 auto; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+}
+
+/* ---- 六度残页速览(常驻小图鉴) ---- */
+.paramita-legend {
+  flex: 0 0 auto; margin: 0 10px 10px; padding: 8px 10px; border-radius: 12px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+}
+.pl-title {
+  font-size: 11px; font-weight: bold; letter-spacing: 1px; opacity: 0.6; margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.pl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.pl-item {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 6px;
+  border-radius: 8px; border-left: 3px solid var(--pc); background: rgba(255,255,255,0.04);
+}
+.pl-item .pl-icon {
+  width: 18px; height: 18px; border-radius: 50%; background: var(--pc);
+  display: flex; align-items: center; justify-content: center; font-size: 10px; flex: 0 0 auto;
+}
+.pl-item .pl-val { margin-left: auto; opacity: 0.65; font-variant-numeric: tabular-nums; }
+
+/* ---- 道路见闻(活动日志,取代原本从未真正显示内容的底部滚动条) ---- */
+.journey-log {
+  flex: 1 1 auto; min-height: 60px; margin: 0 10px 10px; display: flex; flex-direction: column;
+  background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.journey-log-title {
+  flex: 0 0 auto; margin: 0; padding: 8px 12px 6px; font-size: 12.5px; color: var(--gold-light);
+  border-bottom: 1px dashed rgba(255,255,255,0.12);
+}
+.journey-log-list { flex: 1 1 auto; overflow-y: auto; padding: 6px 10px 10px; }
+.log-entry {
+  font-size: 12px; line-height: 1.5; padding: 4px 0; opacity: 0.92;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.log-entry:first-child { opacity: 1; color: #fff8e2; }
+.log-entry:last-child { border-bottom: none; }
+.log-empty { font-size: 12px; opacity: 0.5; font-style: italic; padding: 6px 0; }
 
 /* ---- 地图 ---- */
 #main-stage {
@@ -334,12 +402,6 @@ button {
 }
 .action-btn:hover { background: rgba(255,255,255,0.25); }
 
-#log-ticker {
-  flex: 0 0 auto; background: rgba(0,0,0,0.35); color: #ddd; font-size: 13px;
-  padding: 6px 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  border-top: 1px solid rgba(255,255,255,0.1);
-}
-
 /* ===================== 弹窗 ===================== */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(10, 8, 25, 0.72);
@@ -393,8 +455,14 @@ button {
 /* ===================== 规则手册(菜单式说明页) ===================== */
 .rules-overlay {
   position: fixed; inset: 0; background: rgba(10, 8, 25, 0.72); z-index: 55;
-  display: flex; align-items: center; justify-content: center; padding: 3vh 2vw;
+  display: flex; flex-direction: column; align-items: center;
+  overflow-y: auto; padding: 0 2vw;
   animation: fadeIn 0.15s ease;
+}
+/* Flexible top/bottom spacers: centers the box vertically when it fits, but (unlike plain
+   align-items:center) never clips its top out of reach when it's taller than the viewport. */
+.rules-overlay::before, .rules-overlay::after {
+  content: ''; flex: 1 0 16px;
 }
 .rules-box {
   background: var(--parchment); color: var(--ink); border-radius: 22px;
@@ -447,9 +515,14 @@ button {
 .rit-buy { color: var(--terracotta); }
 .rit-sell { color: var(--jade); }
 @media (max-width: 720px) {
+  .rules-box { max-height: none; }
   .rules-body { flex-direction: column; }
-  .rules-tabs { flex-direction: row; flex: 0 0 auto; flex-wrap: wrap; justify-content: center; }
-  .rules-tab-btn { flex: 1 1 30%; }
+  .rules-tabs {
+    flex-direction: row; flex: 0 0 auto; flex-wrap: nowrap; overflow-x: auto;
+    justify-content: flex-start; -webkit-overflow-scrolling: touch;
+  }
+  .rules-tab-btn { flex: 0 0 auto; min-width: 88px; }
+  .rules-panel { max-height: 60vh; }
   .rit-row { grid-template-columns: 1.1fr 1.6fr 0.8fr 0.8fr; font-size: 12px; }
 }
 
@@ -470,11 +543,13 @@ button {
 
 /* ===================== 结算界面 ===================== */
 #screen-end {
-  background: radial-gradient(circle at 50% 0%, #3a2f66 0%, var(--night) 65%);
+  position: relative;
+  background: var(--night-decor), radial-gradient(circle at 50% 0%, #3a2f66 0%, var(--night) 65%);
   align-items: center; overflow-y: auto; padding: 3vh 2vw;
 }
 .end-wrap {
-  max-width: 900px; width: 100%; background: var(--parchment); border-radius: 24px;
+  position: relative; z-index: 1;
+  max-width: min(980px, 94vw); width: 100%; background: var(--parchment); border-radius: 24px;
   padding: clamp(20px, 3vw, 44px); margin: auto; text-align: center;
 }
 #results-list { display: flex; flex-direction: column; gap: 10px; margin: 20px 0; text-align: left; }
@@ -508,6 +583,8 @@ button {
 }
 @media (max-width: 900px) {
   #main-lower { flex-direction: column; }
-  #teams-panel { flex: 0 0 auto; flex-direction: row; flex-wrap: wrap; max-height: 22vh; }
+  #side-panel { flex: 0 0 auto; max-height: 26vh; }
+  #teams-panel { flex-direction: row; flex-wrap: wrap; max-height: 22vh; }
   .team-card { flex: 1 1 220px; }
+  .paramita-legend, .journey-log { display: none; }
 }

@@ -43,6 +43,7 @@ var DR = window.DR || (window.DR = {});
     DR.Map.renderMapChrome();
     DR.Map.initTokens(DR.state);
     DR.Map.fitMapBox();
+    DR.UI.renderParamitaLegend();
     DR.UI.beginTurn();
     if (timerHandle) clearInterval(timerHandle);
     timerHandle = setInterval(tick, 1000);
