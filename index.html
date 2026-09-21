@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>丝路法灯 · 大乘取经记</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ===================== 设置界面 ===================== -->
+<section id="screen-setup" class="screen active">
+  <div class="setup-wrap">
+    <h1 class="game-title">丝路法灯 <span class="subtitle">大乘取经记</span></h1>
+    <p class="setup-hint">建议 10–15 名学生 → 分成 4–6 组,每组 2–3 人。全班共用一块大屏幕,轮流派一位"操盘小法师"操作。</p>
+
+    <div class="setup-row">
+      <label>队伍数量</label>
+      <div class="stepper">
+        <button id="btn-team-minus" class="btn-round">－</button>
+        <span id="team-count-display">5</span>
+        <button id="btn-team-plus" class="btn-round">＋</button>
+      </div>
+    </div>
+
+    <div id="team-config-list" class="team-config-list"></div>
+
+    <div class="setup-row">
+      <label>游戏时长</label>
+      <select id="timer-select">
+        <option value="20">20 分钟</option>
+        <option value="25">25 分钟</option>
+        <option value="30" selected>30 分钟</option>
+        <option value="35">35 分钟</option>
+      </select>
+    </div>
+
+    <div class="setup-row">
+      <label>音效</label>
+      <label class="switch">
+        <input type="checkbox" id="sound-toggle" checked>
+        <span class="switch-slider"></span>
+      </label>
+    </div>
+
+    <button id="btn-start-game" class="btn-primary btn-big">🪔 开启法路旅程</button>
+
+    <details class="teacher-notes">
+      <summary>教师速览规则</summary>
+      <ol>
+        <li>每队轮流:掷骰子 → 前进(触发机缘卡/智慧问答)→ 可在圣地"结缘"。</li>
+        <li>功德(merit)是分数;六度残页(布施/持戒/忍辱/精进/禅定/般若)是收集品。</li>
+        <li>先到那烂陀寺"开悟",再返回长安才算"功德圆满"。</li>
+        <li>倒计时结束或功德库耗尽,游戏立即结算,不会拖堂。</li>
+        <li>随时可点击右上角"结束游戏"提前收尾。</li>
+      </ol>
+    </details>
+  </div>
+</section>
+
+<!-- ===================== 游戏主界面 ===================== -->
+<section id="screen-game" class="screen">
+  <header id="game-header">
+    <div class="header-left">
+      <span class="title-mini">🪔 丝路法灯</span>
+      <span id="phase-banner" class="phase-banner"></span>
+    </div>
+    <div class="header-mid">
+      <div class="stat-chip">功德库 <b id="bank-display">0</b></div>
+      <div class="stat-chip timer-chip" id="timer-chip">⏳ <b id="timer-display">30:00</b></div>
+    </div>
+    <div class="header-right">
+      <button id="btn-mute" class="btn-icon" title="静音切换">🔊</button>
+      <button id="btn-fullscreen" class="btn-icon" title="全屏投影">⛶</button>
+      <button id="btn-end-game" class="btn-icon btn-danger" title="结束游戏">🏁 结束</button>
+    </div>
+  </header>
+
+  <div id="board-wrap">
+    <div class="lane-label">🐫 陆路</div>
+    <div class="lane" id="lane-land"></div>
+    <div class="lane-label">⛵ 海路</div>
+    <div class="lane" id="lane-sea"></div>
+  </div>
+
+  <div id="main-lower">
+    <div id="teams-panel"></div>
+
+    <div id="turn-control">
+      <div id="active-team-banner"></div>
+      <div id="dice-area">
+        <div id="dice-face" class="die">
+          <span class="pip" data-pip="1"></span><span class="pip" data-pip="2"></span><span class="pip" data-pip="3"></span>
+          <span class="pip" data-pip="4"></span><span class="pip" data-pip="5"></span><span class="pip" data-pip="6"></span>
+          <span class="pip" data-pip="7"></span><span class="pip" data-pip="8"></span><span class="pip" data-pip="9"></span>
+        </div>
+        <button id="btn-roll" class="btn-primary btn-big">🎲 掷骰子</button>
+      </div>
+      <div id="action-area"></div>
+      <button id="btn-next-team" class="btn-secondary btn-big hidden">下一队 ➜</button>
+    </div>
+  </div>
+
+  <div id="log-ticker"></div>
+</section>
+
+<!-- ===================== 结算界面 ===================== -->
+<section id="screen-end" class="screen">
+  <div class="end-wrap">
+    <h1 class="game-title">功德圆满</h1>
+    <div id="results-list"></div>
+    <div id="debrief-box">
+      <h3>课堂讨论小提示</h3>
+      <ul>
+        <li>这次旅程中,哪一道智慧问答让你印象最深?为什么?</li>
+        <li>"六度"里,你觉得自己最擅长哪一项?最想加强哪一项?</li>
+        <li>大乘佛法说"自己觉悟了,还要帮助别人",你能举一个生活中的小例子吗?</li>
+      </ul>
+    </div>
+    <button id="btn-restart" class="btn-primary btn-big">🔄 再玩一次</button>
+  </div>
+</section>
+
+<!-- ===================== 弹窗 ===================== -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div id="modal-box" class="modal-box"></div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
