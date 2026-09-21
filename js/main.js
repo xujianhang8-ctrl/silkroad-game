@@ -76,6 +76,19 @@ var DR = window.DR || (window.DR = {});
 
   function wireKeyboard() {
     document.addEventListener('keydown', e => {
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement && document.activeElement.tagName);
+
+      if (e.key === 'Escape' && DR.UI.rulesOpen()) {
+        DR.UI.closeRules();
+        return;
+      }
+      if ((e.key === 'r' || e.key === 'R') && !typing) {
+        e.preventDefault();
+        if (DR.UI.rulesOpen()) DR.UI.closeRules(); else DR.UI.openRules();
+        return;
+      }
+      if (DR.UI.rulesOpen()) return; // 规则手册打开时,不响应游戏内快捷键
+
       if (!DR.state || DR.state.phase === 'ended') return;
       const overlayOpen = !$('modal-overlay').classList.contains('hidden');
 
@@ -115,6 +128,7 @@ var DR = window.DR || (window.DR = {});
     wireGameEvents();
     wireKeyboard();
     DR.UI.wireTeamsPanelClick();
+    DR.UI.wireRulesEvents();
     DR.Map.wireTooltipDismiss();
     window.addEventListener('resize', () => { if (DR.state) DR.Map.fitMapBox(); });
   });

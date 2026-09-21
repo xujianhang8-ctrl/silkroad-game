@@ -3,7 +3,7 @@ var DR = window.DR || (window.DR = {});
 
 (function () {
 
-const W = 1000, H = 600;
+const W = 1080, H = 640;
 function pctX(x) { return (x / W * 100) + '%'; }
 function pctY(y) { return (y / H * 100) + '%'; }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -17,6 +17,7 @@ function coordFor(routeKey, position) {
 }
 
 function iconForStation(st) {
+  if (st.icon) return st.icon;
   if (st.type === 'final') return '🪷';
   if (st.type === 'site') return '🛕';
   if (st.type === 'story') return '⭐';
@@ -36,8 +37,9 @@ function renderMapChrome() {
   const landCoords = [DR.HOME_COORD, ...DR.LAND_PATH];
   const seaCoords = [DR.HOME_COORD, ...DR.SEA_PATH];
 
-  const mountainSpots = [[345, 190], [366, 206], [316, 236], [281, 286], [256, 326]];
-  const waveSpots = [[700, 250], [610, 295], [520, 335], [440, 365], [365, 392], [300, 415]];
+  const mountainSpots = [[600, 205], [300, 218], [330, 248], [270, 292], [246, 338], [225, 378]];
+  const waveSpots = [[760, 258], [680, 300], [600, 330], [520, 360], [440, 385], [370, 410], [305, 432]];
+  const oasisSpots = [[698, 150], [485, 145], [395, 195], [230, 465]];
 
   svg.innerHTML = `
     <defs>
@@ -55,8 +57,16 @@ function renderMapChrome() {
 
     <rect x="0" y="0" width="${W}" height="${H}" fill="url(#terrainGrad)" />
 
+    <g class="deco-river" fill="none" stroke="#5a9fc7" stroke-width="6" opacity="0.35" stroke-linecap="round">
+      <path d="M120,640 C160,560 175,520 205,478 C230,445 232,420 210,390" />
+    </g>
+
     <g class="deco-mountains" fill="#8a7355" opacity="0.55">
-      ${mountainSpots.map(([x, y]) => `<polygon points="${x - 13},${y + 11} ${x},${y - 12} ${x + 13},${y + 11}" />`).join('')}
+      ${mountainSpots.map(([x, y]) => `<polygon points="${x - 14},${y + 12} ${x},${y - 13} ${x + 14},${y + 12}" />`).join('')}
+    </g>
+
+    <g class="deco-oasis" opacity="0.6">
+      ${oasisSpots.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="7" fill="#6fae6f" stroke="#3f7d63" stroke-width="1.5" />`).join('')}
     </g>
 
     <g class="deco-waves" stroke="#2f6483" stroke-width="2.5" fill="none" opacity="0.4" stroke-linecap="round">
@@ -66,16 +76,16 @@ function renderMapChrome() {
     <path class="route-line route-land" d="${pathD(landCoords)}" />
     <path class="route-line route-sea" d="${pathD(seaCoords)}" />
 
-    <g class="compass" transform="translate(905,375)">
+    <g class="compass" transform="translate(975,400)">
       <circle r="30" fill="#f4ecd8" stroke="#8a6a2f" stroke-width="2" opacity="0.9" />
       <path d="M0,-24 L7,0 L0,24 L-7,0 Z" fill="#b2503b" />
       <text y="-34" text-anchor="middle" class="compass-label">北</text>
     </g>
 
-    <g class="cartouche" transform="translate(55,35)">
-      <rect width="215" height="72" rx="10" fill="#f4ecd8" stroke="#8a6a2f" stroke-width="2" opacity="0.92" />
-      <text x="108" y="30" text-anchor="middle" class="cartouche-title">丝路法灯古地图</text>
-      <text x="108" y="54" text-anchor="middle" class="cartouche-sub">长安 —— 那烂陀寺</text>
+    <g class="cartouche" transform="translate(55,32)">
+      <rect width="225" height="72" rx="10" fill="#f4ecd8" stroke="#8a6a2f" stroke-width="2" opacity="0.92" />
+      <text x="113" y="27" text-anchor="middle" class="cartouche-title">丝路法灯古地图</text>
+      <text x="113" y="51" text-anchor="middle" class="cartouche-sub">长安 —— 那烂陀寺</text>
     </g>
 
     <rect x="0" y="0" width="${W}" height="${H}" fill="url(#vignette)" />
@@ -134,6 +144,23 @@ function wireTooltipDismiss() {
     hideStationTooltip();
   });
   $('station-tooltip').querySelector('.st-tip-close').addEventListener('click', hideStationTooltip);
+}
+
+// ---------------- 驿站法灯标记 ----------------
+
+function markLamp(routeKey, pos, team) {
+  const el = document.querySelector(`.station-marker[data-route="${routeKey}"][data-pos="${pos}"]`);
+  if (!el) return;
+  el.classList.add('lit');
+  let badge = el.querySelector('.lamp-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'lamp-badge';
+    badge.textContent = '🪔';
+    el.appendChild(badge);
+  }
+  badge.style.background = team.color;
+  badge.title = `${team.name} 的法灯`;
 }
 
 // ---------------- 队伍棋子 ----------------
@@ -198,7 +225,7 @@ async function animateActiveMove(state, fromPos) {
   layoutTokens(state);
 }
 
-// #map-wrap 需要严格保持 1000:600 比例,才能让 HTML 标记的百分比坐标
+// #map-wrap 需要严格保持 W:H 比例,才能让 HTML 标记的百分比坐标
 // 与 SVG viewBox 完全对齐。可用空间的宽高比并不固定(侧边队伍栏、下方操作区
 // 都会挤占空间),所以用 JS 按"能放下的最大等比矩形"来定宽高,而不是纯 CSS。
 function fitMapBox() {
@@ -233,6 +260,7 @@ DR.Map = {
   wireTooltipDismiss,
   hideStationTooltip,
   fitMapBox,
+  markLamp,
 };
 
 })();

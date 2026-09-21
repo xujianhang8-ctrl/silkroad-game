@@ -1,5 +1,5 @@
 /* 丝路法灯 · 大乘取经记 — 游戏数据
- * 纯数据文件:棋盘、事件卡、智慧问答、六度残页与队伍预设。
+ * 纯数据文件:棋盘、事件卡、智慧问答、六度与队伍预设。
  * 不含逻辑,方便老师之后自行增删内容。
  */
 var DR = window.DR || (window.DR = {});
@@ -7,28 +7,35 @@ var DR = window.DR || (window.DR = {});
 DR.CONFIG = {
   diceSides: 6,
   startMerit: 10,
-  bankTotal: 220,
+  bankTotal: 260,
   backpackCapacityBase: 4,
   backpackCapacityUpgraded: 6,
-  buyCost: 4,          // 功德换法:花费多少功德换 1 张残页
-  sellValue: 3,         // 译讲弘法:每张残页兑换多少功德
-  fullSetBonus: 8,      // 集齐六度额外奖励
-  firstArrivalBonus: 3, // 首次抵达新站点奖励
-  roundTripBonus: 15,   // 完成往返奖励
+  fullSetBonus: 10,      // 集齐六度额外奖励
+  firstArrivalBonus: 3,  // 首次抵达新站点奖励
+  roundTripBonus: 15,    // 完成往返奖励
   questionChance: 0.35,  // 落地时抽到"智慧问答"而非事件卡的概率
   defaultTimerMinutes: 30,
   sprintMinutesLeft: 5,  // 剩余多少分钟时进入"冲刺阶段"(骰子 +1)
   soundDefault: true,
+
+  // ---- 驿站点灯(结缘市集玩法)----
+  lampCostWay: 4,          // 在普通驿站点灯的花费
+  lampCostSite: 7,         // 在圣地点灯的花费(圣地人气更旺,花费更高)
+  lampMaxPerTeam: 3,       // 每队最多可点亮的法灯数量
+  lampPassBonusOwner: 1,   // 别队经过自己点亮的法灯时,自己获得的随喜功德
+  lampPassBonusVisitor: 2, // 经过别队法灯时,自己获得的随喜功德
 };
 
 // 六度(六波罗蜜)—— 以残页/法宝的形式作为游戏内收集品
+// value:译讲弘法(卖出)时每张残页的功德值;buyCost:功德换法(买入)时的花费。
+// 越"深"的智慧,残页越珍贵——价值也越高。
 DR.PARAMITAS = [
-  { key: 'dana',    name: '布施', icon: '🎁', color: '#e05a5a', meaning: '慷慨分享、乐于助人' },
-  { key: 'sila',    name: '持戒', icon: '📿', color: '#3b82c4', meaning: '遵守约定、行为端正' },
-  { key: 'kshanti', name: '忍辱', icon: '🌿', color: '#4caf6d', meaning: '遇到委屈仍能平静、宽容' },
-  { key: 'virya',   name: '精进', icon: '🔥', color: '#e8892b', meaning: '努力不懈、坚持到底' },
-  { key: 'dhyana',  name: '禅定', icon: '🧘', color: '#8a5fc2', meaning: '专注安定、不受干扰' },
-  { key: 'prajna',  name: '般若', icon: '💡', color: '#d4af37', meaning: '看清事情真相的智慧' },
+  { key: 'dana',    name: '布施', icon: '🎁', color: '#e05a5a', meaning: '慷慨分享、乐于助人', value: 2, buyCost: 4 },
+  { key: 'sila',    name: '持戒', icon: '📿', color: '#3b82c4', meaning: '遵守约定、行为端正', value: 3, buyCost: 5 },
+  { key: 'kshanti', name: '忍辱', icon: '🌿', color: '#4caf6d', meaning: '遇到委屈仍能平静、宽容', value: 3, buyCost: 5 },
+  { key: 'virya',   name: '精进', icon: '🔥', color: '#e8892b', meaning: '努力不懈、坚持到底', value: 4, buyCost: 6 },
+  { key: 'dhyana',  name: '禅定', icon: '🧘', color: '#8a5fc2', meaning: '专注安定、不受干扰', value: 5, buyCost: 7 },
+  { key: 'prajna',  name: '般若', icon: '💡', color: '#d4af37', meaning: '看清事情真相的智慧', value: 6, buyCost: 8 },
 ];
 
 DR.TEAM_PRESETS = [
@@ -41,46 +48,62 @@ DR.TEAM_PRESETS = [
 ];
 
 // ---------- 棋盘 ----------
-// type: 'way'(普通驿站,随机抽卡) / 'site'(圣地,可结缘 + 随机抽卡) / 'story'(固定剧情) / 'final'(终点:那烂陀寺)
+// type: 'way'(普通驿站,随机抽卡) / 'site'(圣地,可结缘+点灯 + 随机抽卡) / 'story'(固定剧情) / 'final'(终点:那烂陀寺)
 // crossover: 可在此地由陆路改海路(或反向),每队限一次
-// x,y: 地图坐标(1000×600 画布空间);blurb: 点击站点时显示的一句历史小知识
-DR.HOME_COORD = { x: 870, y: 70 };
+// icon: 可选,覆盖该站点在地图上显示的图标(不填则按 type 使用默认图标)
+// x,y: 地图坐标(1080×640 画布空间);blurb: 点击站点时显示的一句历史小知识
+DR.HOME_COORD = { x: 945, y: 80 };
 
 DR.LAND_PATH = [
-  { name: '陇西驿道', type: 'way', x: 770, y: 100,
+  { name: '陇西驿道', type: 'way', x: 855, y: 108,
     blurb: '长安通往西域的第一段官道,商旅、僧侣由此踏上万里征途。' },
-  { name: '河西走廊', type: 'way', x: 680, y: 125,
-    blurb: '夹在祁连山与沙漠之间的狭长通道,是丝路最重要的交通命脉。' },
-  { name: '敦煌·莫高窟', type: 'site', offers: ['prajna', 'kshanti', 'dana'], crossover: true, x: 590, y: 150,
+  { name: '武威·凉州', type: 'way', icon: '🏯', x: 802, y: 118,
+    blurb: '汉代设立的河西四郡之一,古称凉州,是通往西域的军事重镇。' },
+  { name: '张掖·大佛寺', type: 'site', offers: ['dana', 'sila', 'prajna'], x: 750, y: 124,
+    blurb: '河西走廊上的佛教艺术重镇,寺中珍藏着一尊巨大的卧佛塑像。' },
+  { name: '酒泉驿站', type: 'way', icon: '🍶', x: 698, y: 128,
+    blurb: '相传将军在此得胜后以御酒犒赏三军,"酒泉"因此得名。' },
+  { name: '敦煌·莫高窟', type: 'site', offers: ['prajna', 'kshanti', 'dana'], crossover: true, x: 645, y: 140,
     blurb: '开凿于沙漠悬崖上的千年石窟,壁画中留下了"九色鹿"等佛教故事。' },
-  { name: '高昌', type: 'story', x: 560, y: 90,
+  { name: '阳关故址', type: 'way', icon: '⛩️', x: 600, y: 118,
+    blurb: '唐代诗人王维写下"西出阳关无故人",阳关自古是通往西域的重要关隘。' },
+  { name: '楼兰古城', type: 'story', icon: '🏚️', x: 565, y: 168,
+    blurb: '丝路上曾经繁华一时的古城,后来神秘消失在沙漠之中,只留下遗迹供人凭吊。',
+    story: {
+      title: '古城遗梦',
+      text: '你在楼兰古城的断壁残垣间静静伫立,忽然懂得了"无常"的道理——盛极一时的繁华,也会随时间流逝。',
+      effect: { merit: 2 },
+    } },
+  { name: '高昌', type: 'story', icon: '👑', x: 525, y: 138,
     blurb: '西域古国,国王麹文泰曾倾力资助玄奘西行求法。',
     story: {
       title: '高昌王的情谊',
       text: '高昌国王麹文泰十分敬重你,与你结为兄弟,赠予丰厚盘缠,还派士兵护送一程。',
       effect: { merit: 5 },
     } },
-  { name: '火焰山驿站', type: 'way', x: 500, y: 115,
+  { name: '火焰山驿站', type: 'way', icon: '🌋', x: 485, y: 120,
     blurb: '干燥炎热的红色山脉,后来成为《西游记》中的著名场景。' },
-  { name: '龟兹', type: 'site', offers: ['prajna', 'virya', 'sila'], x: 430, y: 140,
+  { name: '龟兹', type: 'site', offers: ['prajna', 'virya', 'sila'], x: 440, y: 148,
     blurb: '西域佛教文化中心,伟大译经家鸠摩罗什的故乡。' },
-  { name: '姑墨驿站', type: 'way', x: 370, y: 165,
+  { name: '姑墨驿站', type: 'way', icon: '🐪', x: 395, y: 172,
     blurb: '丝路北道上的重要绿洲驿站,商队在此补给休整。' },
-  { name: '葱岭雪道', type: 'way', x: 330, y: 210,
+  { name: '疏勒', type: 'way', icon: '🏘️', x: 355, y: 195,
+    blurb: '西域古国,丝绸之路南、北两道在此交汇,多民族聚居、商贸繁盛。' },
+  { name: '葱岭雪道', type: 'way', icon: '🏔️', x: 320, y: 235,
     blurb: '即帕米尔高原,山高路险、终年积雪,是丝路上最艰难的路段之一。' },
-  { name: '迦湿弥罗', type: 'site', offers: ['dhyana', 'sila', 'kshanti'], x: 300, y: 270,
+  { name: '迦湿弥罗', type: 'site', offers: ['dhyana', 'sila', 'kshanti'], x: 290, y: 285,
     blurb: '今克什米尔地区,古代佛教学术十分兴盛的高原之国。' },
-  { name: '犍陀罗古道', type: 'way', x: 270, y: 325,
+  { name: '犍陀罗古道', type: 'way', icon: '⛰️', x: 262, y: 335,
     blurb: '连接中亚与南亚的山间要道。' },
-  { name: '犍陀罗', type: 'site', offers: ['dana', 'virya', 'prajna'], x: 245, y: 380,
+  { name: '犍陀罗', type: 'site', offers: ['dana', 'virya', 'prajna'], x: 240, y: 385,
     blurb: '古印度西北部,希腊与印度艺术在此融合,诞生了最早的佛像雕刻风格。' },
-  { name: '天竺边境', type: 'way', x: 225, y: 430,
+  { name: '天竺边境', type: 'way', icon: '🚩', x: 222, y: 430,
     blurb: '终于抵达"天竺"——古代中国对印度的称呼。' },
-  { name: '王舍城外', type: 'way', x: 210, y: 475,
+  { name: '王舍城外', type: 'way', icon: '🏛️', x: 208, y: 478,
     blurb: '摩揭陀国故都近郊,佛陀曾在此长期说法。' },
-  { name: '灵鹫山脚', type: 'way', x: 200, y: 520,
-    blurb: '佛陀讲说《法华经》等大乘经典的圣地就在山上。' },
-  { name: '那烂陀寺', type: 'final', offers: ['dana', 'sila', 'kshanti', 'virya', 'dhyana', 'prajna'], x: 195, y: 565,
+  { name: '灵鹫山脚', type: 'way', icon: '🦅', x: 200, y: 525,
+    blurb: '佛陀讲说《法华经》等大乘经典的圣地就在山上,"灵鹫"正是取自山形似鹫鸟。' },
+  { name: '那烂陀寺', type: 'final', offers: ['dana', 'sila', 'kshanti', 'virya', 'dhyana', 'prajna'], x: 205, y: 590,
     blurb: '古代世界最大的佛教学府,玄奘曾在此拜戒贤法师为师,潜心求学多年。',
     story: {
       title: '灵鹫山下,豁然开朗',
@@ -90,32 +113,43 @@ DR.LAND_PATH = [
 ];
 
 DR.SEA_PATH = [
-  { name: '广州港', type: 'way', x: 790, y: 230,
+  { name: '广州港', type: 'way', icon: '🚢', x: 820, y: 245,
     blurb: '古代海上丝绸之路的重要起点,商船由此扬帆南下。' },
-  { name: '交趾', type: 'way', crossover: true, x: 720, y: 280,
+  { name: '徐闻·合浦港', type: 'way', icon: '⚓', x: 768, y: 270,
+    blurb: '《汉书》记载,汉代商船就是从徐闻、合浦一带出发远航南洋,是海上丝路最早的始发港之一。' },
+  { name: '交趾', type: 'way', crossover: true, x: 715, y: 300,
     blurb: '今越南北部,汉文化与东南亚文化交汇之地。' },
-  { name: '占婆', type: 'site', offers: ['dana', 'kshanti', 'virya'], x: 650, y: 320,
+  { name: '占婆', type: 'site', offers: ['dana', 'kshanti', 'virya'], x: 655, y: 325,
     blurb: '古代中南半岛沿海古国,商船南下的重要补给站。' },
-  { name: '南海季风道', type: 'way', x: 580, y: 355,
+  { name: '真腊古国', type: 'story', icon: '🏯', x: 600, y: 350,
+    blurb: '中南半岛上的古老王国,以精湛的建筑技艺闻名。',
+    story: {
+      title: '匠心营造',
+      text: '商船在真腊靠岸补给,当地工匠精湛的建筑技艺让商队赞叹不已,大家都学到了专注做事的道理。',
+      effect: { merit: 4 },
+    } },
+  { name: '南海季风道', type: 'way', icon: '🌊', x: 545, y: 368,
     blurb: '商船依靠季风航行:冬季南下,夏季北返。' },
-  { name: '室利佛逝', type: 'site', offers: ['prajna', 'dhyana', 'virya'], x: 510, y: 390,
+  { name: '单马令', type: 'site', offers: ['sila', 'dhyana', 'dana'], x: 485, y: 385,
+    blurb: '马来半岛上的古老邦国,盛产香料与珍宝,是南洋商路上的重要贸易据点。' },
+  { name: '室利佛逝', type: 'site', offers: ['prajna', 'dhyana', 'virya'], x: 425, y: 400,
     blurb: '今苏门答腊一带的海上强国,高僧义净曾在此停留多年翻译佛经。' },
-  { name: '马六甲海峡', type: 'way', x: 440, y: 415,
+  { name: '马六甲海峡', type: 'way', icon: '🧭', x: 365, y: 415,
     blurb: '连接南海与印度洋的咽喉要道,自古商船云集。' },
-  { name: '狮子国', type: 'site', offers: ['sila', 'kshanti', 'dhyana'], x: 370, y: 435,
+  { name: '狮子国', type: 'site', offers: ['sila', 'kshanti', 'dhyana'], x: 310, y: 432,
     blurb: '今斯里兰卡,自古相传保存有佛陀的珍贵舍利与法物。' },
-  { name: '南天竺外海', type: 'way', x: 320, y: 470,
+  { name: '南天竺外海', type: 'way', icon: '⛈️', x: 275, y: 462,
     blurb: '临近印度南端的海域,风浪多变,考验着每一位航海者。' },
-  { name: '南天竺登岸', type: 'story', x: 275, y: 505,
+  { name: '南天竺登岸', type: 'story', icon: '🏖️', x: 248, y: 498,
     blurb: '商船终于靠岸,踏上天竺的土地。',
     story: {
       title: '有惊无险',
       text: '商船在南天竺外海遭遇风浪,幸而平安靠岸,大家都松了一口气。',
       effect: { merit: 3 },
     } },
-  { name: '恒河渡口', type: 'way', x: 235, y: 538,
+  { name: '恒河渡口', type: 'way', icon: '🛶', x: 222, y: 538,
     blurb: '圣河恒河岸边,渡河后便可直达佛教圣地。' },
-  { name: '那烂陀寺', type: 'final', offers: ['dana', 'sila', 'kshanti', 'virya', 'dhyana', 'prajna'], x: 195, y: 565,
+  { name: '那烂陀寺', type: 'final', offers: ['dana', 'sila', 'kshanti', 'virya', 'dhyana', 'prajna'], x: 205, y: 590,
     blurb: '古代世界最大的佛教学府,玄奘曾在此拜戒贤法师为师,潜心求学多年。',
     story: {
       title: '灵鹫山下,豁然开朗',
@@ -145,6 +179,11 @@ DR.LAND_EVENTS = [
   { title: '迷路小插曲', text: '商队走错了岔路,绕了一小段远路。', effect: { merit: -2 },
     positive: '走错路不可怕,能及时发现、调整方向就好。' },
   { title: '意外发现古井', text: '沙漠中意外发现一口清泉古井,商队士气大振。', effect: { merit: 4 } },
+  { title: '烽燧传信', text: '沿途烽火台的士兵热心指路,还告诉你前方水源的位置。', effect: { merit: 3 } },
+  { title: '互赠干粮', text: '与同行的驼队分享干粮和故事,结下了一段善缘。', effect: { fragment: 'random' } },
+  { title: '烈日难行', text: '正午烈日炎炎,商队只好找阴凉处暂避,耽误了一些行程。', effect: { skipNext: true },
+    positive: '懂得适时休息,也是对自己身体的慈悲。' },
+  { title: '古庙题壁', text: '你在半路古庙的墙壁上,留下了自己的心愿与祝福。', effect: { merit: 2 } },
 ];
 
 // ---------- 海路机缘卡 ----------
@@ -165,6 +204,10 @@ DR.SEA_EVENTS = [
   { title: '迷航小插曲', text: '夜间辨认星象出了偏差,多绕了一段路。', effect: { merit: -2 },
     positive: '及时校正方向,继续前行就好。' },
   { title: '港口善缘', text: '靠岸休整时,当地寺院僧众热情款待。', effect: { fragment: 'random' } },
+  { title: '南风送行', text: '恰逢难得的顺风时节,船队航程格外顺利。', effect: { merit: 3 } },
+  { title: '异域译语', text: '与当地的翻译交流各国语言的趣事,收获了一页译经心得。', effect: { fragment: 'random' } },
+  { title: '船舱漏水', text: '船舱不慎渗入海水,货物受潮损失了一些。', effect: { merit: -2 },
+    positive: '及时补救、化险为夷,这也是一种"精进"。' },
 ];
 
 // ---------- 智慧问答(全班共答) ----------
@@ -231,4 +274,19 @@ DR.QUESTIONS = [
   { q: '那烂陀寺在古代是一座非常有名的什么场所?',
     options: ['王宫', '佛教最高学府,来自各国的僧人在此求学', '军事要塞', '商业市场'], answer: 1,
     note: '玄奘就曾在那烂陀寺跟随戒贤法师学习多年。' },
+  { q: '河西走廊上的张掖,以哪种著名的佛教艺术闻名至今?',
+    options: ['万里长城', '巨大的卧佛塑像', '活字印刷', '青花瓷'], answer: 1,
+    note: '张掖大佛寺内的卧佛,是丝路沿线著名的佛教艺术珍品。' },
+  { q: '唐代诗人王维写道"西出阳关无故人",这句诗表达了送别友人时怎样的心情?',
+    options: ['开心快乐', '依依不舍的牵挂', '愤怒生气', '毫不在意'], answer: 1,
+    note: '阳关是古代通往西域的重要关隘,过了阳关就再难遇见相识的故人了。' },
+  { q: '楼兰古城后来神秘消失在沙漠中,这段历史最能提醒我们什么道理?',
+    options: ['万事万物都会变化,要珍惜当下', '沙漠里不能盖房子', '沙子很烫', '骆驼跑得很快'], answer: 0,
+    note: '繁华的古城也会随时间流逝,这正呼应了佛法中"无常"的道理。' },
+  { q: '据《汉书》记载,古代海上丝绸之路的商船最早是从哪一带出发远航南洋的?',
+    options: ['徐闻、合浦', '北京', '西藏', '黄河源头'], answer: 0,
+    note: '徐闻、合浦是史书记载中最早的海上丝路始发港之一。' },
+  { q: '六度残页中,哪一项常被认为是"最深"的智慧,能帮助我们看清事情的真相?',
+    options: ['布施', '持戒', '般若', '忍辱'], answer: 2,
+    note: '般若是六度中最深的一度,所以在游戏里它的"功德价值"也最高。' },
 ];

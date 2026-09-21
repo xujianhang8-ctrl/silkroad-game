@@ -44,16 +44,18 @@
     </div>
 
     <button id="btn-start-game" class="btn-primary btn-big">🪔 开启法路旅程</button>
+    <button id="btn-open-rules-setup" class="btn-secondary btn-big">📜 查看完整规则</button>
 
     <details class="teacher-notes">
-      <summary>教师速览规则</summary>
+      <summary>教师速览规则(30 秒版)</summary>
       <ol>
-        <li>每队轮流:掷骰子 → 前进(触发机缘卡/智慧问答)→ 可在圣地"结缘"。</li>
-        <li>功德(merit)是分数;六度残页(布施/持戒/忍辱/精进/禅定/般若)是收集品。</li>
+        <li>每队轮流经历四个回合阶段:🎲掷骰前进 → ✨机缘触发 → 🛕集市抉择 → ➜回合结束。</li>
+        <li>功德(merit)是分数;六度残页(布施/持戒/忍辱/精进/禅定/般若)是收集品,每种残页的"功德价值"不同,般若最珍贵。</li>
+        <li>集市阶段可以结缘(买/换/兑残页),也可以花功德点亮法灯"占领"一个驿站,之后别队路过都会带来双方随喜功德。</li>
         <li>先到那烂陀寺"开悟",再返回长安才算"功德圆满"。</li>
-        <li>倒计时结束或功德库耗尽,游戏立即结算,不会拖堂。</li>
-        <li>随时可点击右上角"结束游戏"提前收尾。</li>
+        <li>倒计时结束或功德库耗尽,游戏立即结算,不会拖堂;随时可点击右上角"结束游戏"提前收尾。</li>
       </ol>
+      <p class="teacher-notes-more">想看图文并茂的完整版?点击上方「📜 查看完整规则」。</p>
     </details>
   </div>
 </section>
@@ -70,6 +72,7 @@
       <div class="stat-chip timer-chip" id="timer-chip">⏳ <b id="timer-display">30:00</b></div>
     </div>
     <div class="header-right">
+      <button id="btn-open-rules-game" class="btn-icon" title="查看规则">❓ 规则</button>
       <button id="btn-mute" class="btn-icon" title="静音切换">🔊</button>
       <button id="btn-fullscreen" class="btn-icon" title="全屏投影">⛶</button>
       <button id="btn-end-game" class="btn-icon btn-danger" title="结束游戏">🏁 结束</button>
@@ -81,7 +84,7 @@
 
     <div id="main-stage">
       <div id="map-wrap">
-        <svg id="map-svg" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+        <svg id="map-svg" viewBox="0 0 1080 640" preserveAspectRatio="xMidYMid meet"></svg>
         <div id="map-markers"></div>
         <div class="map-legend">
           <span><i class="leg-swatch leg-land"></i>🐫 陆路</span>
@@ -89,11 +92,13 @@
           <span>🛕 圣地</span>
           <span>⭐ 剧情</span>
           <span>🪷 终点</span>
+          <span>🪔 已点灯</span>
           <span class="leg-hint">点击地图上的站点可查看小知识</span>
         </div>
       </div>
 
       <div id="turn-control">
+        <div id="phase-tracker" class="phase-tracker"></div>
         <div id="active-team-banner"></div>
         <div id="dice-area">
           <div id="dice-face" class="die">
@@ -138,6 +143,95 @@
 <!-- ===================== 弹窗 ===================== -->
 <div id="modal-overlay" class="modal-overlay hidden">
   <div id="modal-box" class="modal-box"></div>
+</div>
+
+<!-- ===================== 规则手册(菜单式说明页) ===================== -->
+<div id="rules-overlay" class="rules-overlay hidden">
+  <div class="rules-box">
+    <div class="rules-head">
+      <h2>📜 法灯规则手册</h2>
+      <button id="btn-rules-close" class="btn-icon" aria-label="关闭规则">✕ 关闭</button>
+    </div>
+    <div class="rules-body">
+      <nav id="rules-tabs" class="rules-tabs">
+        <button class="rules-tab-btn active" data-tab="goal">🎯<span>游戏目标</span></button>
+        <button class="rules-tab-btn" data-tab="phases">🔄<span>回合流程</span></button>
+        <button class="rules-tab-btn" data-tab="map">🗺️<span>地图与站点</span></button>
+        <button class="rules-tab-btn" data-tab="items">🎴<span>六度残页</span></button>
+        <button class="rules-tab-btn" data-tab="market">🛕<span>集市与点灯</span></button>
+        <button class="rules-tab-btn" data-tab="score">🏆<span>计分与奖项</span></button>
+      </nav>
+      <div class="rules-panel">
+
+        <section class="rules-section active" data-panel="goal">
+          <h3>🎯 游戏目标</h3>
+          <p>全班分组扮演求法商队,沿着 🐫陆路 或 ⛵海路 前往天竺的那烂陀寺"取经开悟",再平安返回长安才算"功德圆满"。</p>
+          <ul class="rules-list">
+            <li>倒计时结束、功德库耗尽,或老师点击「结束游戏」,立即结算,不会拖堂。</li>
+            <li>最终比较每队的<b>总功德</b>(手中功德 + 残页价值),排名之外,还会颁发好几项趣味称号——人人都有收获。</li>
+            <li>这不是比谁最"凶",而是比谁在旅途中修得更用心、学得更多。</li>
+          </ul>
+        </section>
+
+        <section class="rules-section" data-panel="phases">
+          <h3>🔄 回合流程(像大富翁一样,一回合分四步)</h3>
+          <p>每一队的回合都会经历下面四个阶段,屏幕上方的进度条会实时显示当前在哪一步:</p>
+          <ol class="rules-steps">
+            <li><b>① 🎲 掷骰前进</b> —— 点击「掷骰子」,商队沿骆驼🐫或商船⛵的路线前进相应的站数。</li>
+            <li><b>② ✨ 机缘触发</b> —— 落地后随机抽到一张<b>机缘卡</b>(善缘加分 / 小考验,都附正向引导语)、一道全班作答的<b>智慧问答</b>,或固定的<b>剧情</b>。</li>
+            <li><b>③ 🛕 集市抉择</b> —— 有站点可以选择:前往圣地<b>结缘</b>(买/换/兑残页)、花功德<b>点亮法灯</b>、或在敦煌/交趾<b>换乘</b>路线;也可以什么都不做,直接结束回合。</li>
+            <li><b>④ ➜ 回合结束</b> —— 点击「下一队」,轮到下一组操作。</li>
+          </ol>
+        </section>
+
+        <section class="rules-section" data-panel="map">
+          <h3>🗺️ 地图与站点</h3>
+          <p>地图上一共有四种站点,点击任意站点图标都能看到一句历史小知识:</p>
+          <ul class="rules-list">
+            <li>📍 <b>普通驿站</b>——抵达后随机触发机缘卡或智慧问答。</li>
+            <li>🛕 <b>圣地</b>——除了机缘卡/问答,还能进行「结缘」交易,点灯花费也更高(人气更旺)。</li>
+            <li>⭐ <b>剧情站</b>——触发固定的历史小故事(如高昌王资助、楼兰遗梦),奖励固定。</li>
+            <li>🪷 <b>终点·那烂陀寺</b>——陆路、海路在此汇合;第一次抵达会自动调头,踏上归途。</li>
+            <li>⇄ <b>换乘点</b>(敦煌 / 交趾)——每队限一次,可由陆路改海路(或反向)。</li>
+          </ul>
+        </section>
+
+        <section class="rules-section" data-panel="items">
+          <h3>🎴 六度残页(收集品)</h3>
+          <p>六度残页对应佛教"六波罗蜜",每一种的"功德价值"不同——道行越深,残页越珍贵:</p>
+          <div id="rules-items-table" class="rules-items-table"></div>
+          <p class="rules-note">买入价固定比价值高一点,所以"囤积倒卖"赚不到差价;集齐全部六种残页,译讲弘法时还有额外奖励。</p>
+        </section>
+
+        <section class="rules-section" data-panel="market">
+          <h3>🛕 集市抉择:结缘 与 点灯</h3>
+          <p><b>结缘</b>(仅限圣地/终点站)有三种方式,随时可切换标签:</p>
+          <ul class="rules-list">
+            <li><b>功德换法</b>——花功德买一张残页(每种残页价格不同)。</li>
+            <li><b>以法结缘</b>——用自己的残页 1:1 换取想要的残页,不分价值,重在结缘。</li>
+            <li><b>译讲弘法</b>——把残页兑换回功德,集齐六度还有额外奖励。</li>
+          </ul>
+          <p><b>点亮法灯</b> 🪔(像大富翁"买地",但奖励是双向、正向的):</p>
+          <ul class="rules-list" id="rules-lamp-list"></ul>
+        </section>
+
+        <section class="rules-section" data-panel="score">
+          <h3>🏆 计分与奖项</h3>
+          <p><b>总功德 = 手中功德 + 残页价值</b>(集齐六度额外加分)。结束时会颁发:</p>
+          <ul class="rules-list">
+            <li>🏆 功德第一——总功德最高的队伍。</li>
+            <li>💡 智慧奖——答对智慧问答最多的队伍。</li>
+            <li>🔥 精进奖——掷骰回合数最多、最努力前进的队伍。</li>
+            <li>🪔 点灯奖——点亮法灯最多的队伍。</li>
+            <li>🌸 圆满奖——完成往返、回到长安的队伍。</li>
+            <li>🌿 毅力奖——给予排名最后一队的鼓励称号。</li>
+          </ul>
+          <p class="rules-note">每队至少能拿到一项称号,重在参与、正向鼓励。</p>
+        </section>
+
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="js/data.js"></script>

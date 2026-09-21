@@ -10,6 +10,7 @@ function escapeHtml(str) {
 }
 
 function $(id) { return document.getElementById(id); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const DICE_PIPS = {
   1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 3, 4, 6, 7, 9],
@@ -87,7 +88,8 @@ function renderTeamsPanel(state) {
       <div class="tc-head"><span>${team.icon} ${escapeHtml(team.name)}</span><span class="tc-merit">${team.merit} 功德</span></div>
       <div class="tc-sub">${team.route === 'land' ? '🐫 陆路' : '⛵ 海路'} · ${escapeHtml(posLabel)}
         ${team.direction === 'back' && !team.completed ? '(归途)' : ''}
-        ${team.completed ? '<span class="tc-done">✓ 圆满</span>' : ''}</div>
+        ${team.completed ? '<span class="tc-done">✓ 圆满</span>' : ''}
+        ${team.lampsLit > 0 ? `<span class="tc-lamp">🪔×${team.lampsLit}</span>` : ''}</div>
       <div class="tc-frags">${frags}</div>
     </div>`;
   }).join('');
@@ -116,6 +118,29 @@ function renderPhaseBanner(state) {
   else { el.classList.remove('show'); }
 }
 
+// ---------------- 回合阶段进度条(掷骰→机缘→集市→结束,呼应大富翁式的分步流程) ----------------
+
+function renderPhaseTracker(state) {
+  const el = $('phase-tracker');
+  if (!el) return;
+  if (!el.childElementCount) {
+    el.innerHTML = DR.Game.TURN_PHASES.map((p, i) => (
+      (i > 0 ? '<span class="phase-connector"></span>' : '') +
+      `<span class="phase-step" data-phase="${p.key}"><span class="ps-icon">${p.icon}</span><span class="ps-label">${escapeHtml(p.label)}</span></span>`
+    )).join('');
+  }
+  const order = DR.Game.TURN_PHASES.map(p => p.key);
+  const curIdx = order.indexOf(state.turnPhase);
+  el.querySelectorAll('.phase-step').forEach(stepEl => {
+    const idx = order.indexOf(stepEl.dataset.phase);
+    stepEl.classList.toggle('current', idx === curIdx);
+    stepEl.classList.toggle('done', idx >= 0 && idx < curIdx);
+  });
+  el.querySelectorAll('.phase-connector').forEach((c, i) => {
+    c.classList.toggle('done', i < curIdx);
+  });
+}
+
 function renderAll() {
   const state = DR.state;
   DR.Map.layoutTokens(state);
@@ -123,6 +148,7 @@ function renderAll() {
   renderBank(state);
   renderTimer(state);
   renderPhaseBanner(state);
+  renderPhaseTracker(state);
 }
 
 // ---------------- 弹窗 ----------------
@@ -152,6 +178,12 @@ function renderModal() {
   else if (modalMode === 'confirmEnd') renderConfirmEndModal();
 }
 
+function lampBonusLine(result) {
+  if (!result || !result.lampBonus) return '';
+  const lb = result.lampBonus;
+  return `<p class="modal-positive-note">🪔 路过 ${lb.ownerTeam.icon}${escapeHtml(lb.ownerTeam.name)} 点亮的法灯,双方随喜获得功德!</p>`;
+}
+
 function renderCardModal() {
   const data = modalData;
   const box = $('modal-box');
@@ -166,6 +198,7 @@ function renderCardModal() {
     ${effectHtml}
     ${data.positive ? `<p class="modal-positive-note">💡 ${escapeHtml(data.positive)}</p>` : ''}
     ${data.turnedAround ? `<p class="modal-positive-note">🔄 已抵达终点,商队即将踏上归途,把智慧带回长安!</p>` : ''}
+    ${lampBonusLine(pendingPostModal)}
     <div class="modal-buttons"><button id="modal-confirm-btn" class="btn-primary modal-confirm">确定</button></div>
   `;
   $('modal-confirm-btn').addEventListener('click', () => {
@@ -192,6 +225,7 @@ function renderQuestionModal() {
     <h2>💡 全班智慧问答</h2>
     <p class="modal-text">${escapeHtml(q.q)}</p>
     <div class="q-options">${q.options.map((opt, i) => `<button class="option-btn" data-index="${i}">${i + 1}. ${escapeHtml(opt)}</button>`).join('')}</div>
+    ${lampBonusLine(pendingPostModal)}
   `;
   box.querySelectorAll('.option-btn').forEach(b => b.addEventListener('click', e => {
     const idx = +e.currentTarget.dataset.index;
@@ -243,14 +277,14 @@ function renderTradeModal() {
     const full = DR.Game.backpackTotal(team) >= team.backpackCap;
     inner = `<div class="frag-grid">${station.offers.map(key => {
       const def = DR.PARAMITAS.find(p => p.key === key);
-      const canAfford = team.merit >= DR.CONFIG.buyCost;
+      const canAfford = team.merit >= def.buyCost;
       return `<button class="frag-btn buy-frag-btn" data-key="${key}" ${(!canAfford || full) ? 'disabled' : ''}>
-        <span class="fb-icon">${def.icon}</span>${def.name}<br><small>花费 ${DR.CONFIG.buyCost} 功德</small></button>`;
+        <span class="fb-icon">${def.icon}</span>${def.name}<br><small>花费 ${def.buyCost} 功德</small></button>`;
     }).join('')}</div>
     <p class="tc-sub">你的功德:${team.merit} · 行囊 ${DR.Game.backpackTotal(team)}/${team.backpackCap}${full ? '(已满)' : ''}</p>`;
   } else if (tradeTab === 'swap') {
     const held = DR.PARAMITAS.filter(p => team.backpack[p.key] > 0);
-    inner = `<p class="tc-sub">先选择你要交出的残页,再选择想要换取的残页:</p>
+    inner = `<p class="tc-sub">先选择你要交出的残页,再选择想要换取的残页(1 换 1,不分价值):</p>
       <div class="frag-grid">${held.length ? held.map(p => `<button class="frag-btn swap-give-btn ${swapGive === p.key ? 'selected' : ''}" data-key="${p.key}">
         <span class="fb-icon">${p.icon}</span>${p.name} ×${team.backpack[p.key]}</button>`).join('') : '<p>你的行囊里还没有残页。</p>'}</div>
       <p class="tc-sub">换取(该地可结缘的残页):</p>
@@ -260,11 +294,12 @@ function renderTradeModal() {
       }).join('')}</div>`;
   } else if (tradeTab === 'sell') {
     const held = DR.PARAMITAS.filter(p => team.backpack[p.key] > 0);
+    const totalValue = held.reduce((s, p) => s + p.value * team.backpack[p.key], 0);
     const totalCount = held.reduce((s, p) => s + team.backpack[p.key], 0);
     const fullSet = DR.PARAMITAS.every(p => team.backpack[p.key] >= 1);
-    const preview = totalCount * DR.CONFIG.sellValue + (fullSet ? DR.CONFIG.fullSetBonus : 0);
-    inner = `<div class="frag-grid">${held.length ? held.map(p => `<div class="frag-btn"><span class="fb-icon">${p.icon}</span>${p.name} ×${team.backpack[p.key]}</div>`).join('') : '<p>行囊是空的,暂时无法兑换。</p>'}</div>
-      ${held.length ? `<p class="sell-preview">预计获得:${preview} 功德 ${fullSet ? '(集齐六度奖励 +' + DR.CONFIG.fullSetBonus + ')' : ''}</p>
+    const preview = totalValue + (fullSet ? DR.CONFIG.fullSetBonus : 0);
+    inner = `<div class="frag-grid">${held.length ? held.map(p => `<div class="frag-btn"><span class="fb-icon">${p.icon}</span>${p.name} ×${team.backpack[p.key]}<br><small>每张值 ${p.value}</small></div>`).join('') : '<p>行囊是空的,暂时无法兑换。</p>'}</div>
+      ${held.length ? `<p class="sell-preview">预计获得:${preview} 功德(共 ${totalCount} 张${fullSet ? ' · 集齐六度奖励 +' + DR.CONFIG.fullSetBonus : ''})</p>
       <div class="modal-buttons"><button id="btn-confirm-sell" class="btn-primary">译讲弘法,全部兑换</button></div>` : ''}`;
   }
 
@@ -310,6 +345,61 @@ function renderTradeModal() {
   $('btn-close-trade').addEventListener('click', hideModal);
 }
 
+// ---------------- 规则手册(菜单式说明页) ----------------
+
+function renderRulesDynamicContent() {
+  const table = $('rules-items-table');
+  if (table && !table.childElementCount) {
+    table.innerHTML = `
+      <div class="rit-row rit-head"><span>残页</span><span>意涵</span><span>买入价</span><span>卖出值</span></div>
+      ${DR.PARAMITAS.map(p => `
+        <div class="rit-row">
+          <span class="rit-name"><span class="rit-icon" style="background:${p.color}">${p.icon}</span>${escapeHtml(p.name)}</span>
+          <span class="rit-meaning">${escapeHtml(p.meaning)}</span>
+          <span class="rit-buy">${p.buyCost} 功德</span>
+          <span class="rit-sell">${p.value} 功德</span>
+        </div>
+      `).join('')}
+    `;
+  }
+  const lampList = $('rules-lamp-list');
+  if (lampList && !lampList.childElementCount) {
+    lampList.innerHTML = `
+      <li>在<b>普通驿站</b>点灯花费 <b>${DR.CONFIG.lampCostWay}</b> 功德,在<b>圣地</b>点灯花费 <b>${DR.CONFIG.lampCostSite}</b> 功德(人气更旺、更贵)。</li>
+      <li>每队最多能点亮 <b>${DR.CONFIG.lampMaxPerTeam}</b> 盏法灯,一个站点先到先得,点亮后地图上会显示你队伍颜色的 🪔。</li>
+      <li>之后别的队伍路过你点亮的法灯,你会获得 <b>${DR.CONFIG.lampPassBonusOwner}</b> 点随喜功德,路过的队伍自己也会获得 <b>${DR.CONFIG.lampPassBonusVisitor}</b> 点——双方都开心,不会互相扣分。</li>
+    `;
+  }
+}
+
+function openRules() {
+  renderRulesDynamicContent();
+  $('rules-overlay').classList.remove('hidden');
+}
+function closeRules() {
+  $('rules-overlay').classList.add('hidden');
+}
+
+function wireRulesEvents() {
+  $('btn-open-rules-setup').addEventListener('click', openRules);
+  $('btn-open-rules-game').addEventListener('click', openRules);
+  $('btn-rules-close').addEventListener('click', closeRules);
+  $('rules-overlay').addEventListener('click', e => {
+    if (e.target.id === 'rules-overlay') closeRules();
+  });
+  $('rules-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.rules-tab-btn');
+    if (!btn) return;
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.rules-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.rules-section').forEach(s => s.classList.toggle('active', s.dataset.panel === tab));
+  });
+}
+
+function rulesOpen() {
+  return !$('rules-overlay').classList.contains('hidden');
+}
+
 // ---------------- 回合流程 ----------------
 
 function showActionArea(actions) {
@@ -326,6 +416,7 @@ function showActionArea(actions) {
 
 function showNextOnly() {
   $('btn-next-team').classList.remove('hidden');
+  $('btn-next-team').disabled = false;
 }
 
 function beginTurn() {
@@ -338,6 +429,7 @@ function beginTurn() {
   const team = DR.Game.activeTeam(state);
 
   if (DR.Game.isAutoTurn(state)) {
+    state.turnPhase = 'end';
     $('active-team-banner').innerHTML = `${team.icon} <span style="color:${team.color}">${escapeHtml(team.name)}</span> 已功德圆满 ✨`;
     $('btn-roll').disabled = true;
     DR.Game.autoResolveTurn(state);
@@ -384,6 +476,8 @@ async function onRolled() {
   renderTeamsPanel(state); renderBank(state);
 
   if (result.skipped) {
+    state.turnPhase = 'end';
+    renderPhaseTracker(state);
     DR.Audio.trial();
     showActionArea([]);
     showNextOnly();
@@ -393,12 +487,16 @@ async function onRolled() {
   await DR.Map.animateActiveMove(state, fromPos);
 
   if (result.arrivedHome) {
+    state.turnPhase = 'end';
+    renderPhaseTracker(state);
     DR.Audio.finish();
     showModal('home', { team: result.team });
     showNextOnly();
     return;
   }
 
+  state.turnPhase = 'landing';
+  renderPhaseTracker(state);
   pendingPostModal = result;
 
   if (result.type === 'story') {
@@ -416,10 +514,26 @@ async function onRolled() {
 function afterLandingModalClosed(result) {
   const state = DR.state;
   if (DR.Game.bankEmpty(state)) { DR.UI.finishGame('bankEmpty'); return; }
+  const team = DR.Game.activeTeam(state);
+  state.turnPhase = 'market';
+  renderPhaseTracker(state);
   renderTeamsPanel(state);
   const actions = [];
   if (result.canTrade) {
     actions.push({ label: '🛕 前往结缘', fn: () => showModal('trade', { station: result.station }) });
+  }
+  if (result.canLightLamp) {
+    actions.push({
+      label: `🪔 点亮法灯(花费 ${result.lampCost} 功德)`,
+      fn: () => {
+        const res = DR.Game.lightLamp(state, result.visitKey, result.station);
+        if (!res.ok) return;
+        DR.Audio.good();
+        DR.Map.markLamp(team.route, team.position, team);
+        renderAll();
+        afterLandingModalClosed({ ...result, canLightLamp: false });
+      },
+    });
   }
   if (result.canCrossover) {
     actions.push({
@@ -435,9 +549,17 @@ function afterLandingModalClosed(result) {
   showNextOnly();
 }
 
-function onNextTeamClick() {
+let turnEndTransitioning = false;
+async function onNextTeamClick() {
   const state = DR.state;
+  if (turnEndTransitioning) return;
   if (DR.Game.bankEmpty(state)) { DR.UI.finishGame('bankEmpty'); return; }
+  turnEndTransitioning = true;
+  $('btn-next-team').disabled = true;
+  state.turnPhase = 'end';
+  renderPhaseTracker(state);
+  await sleep(280);
+  turnEndTransitioning = false;
   DR.Game.nextTeam(state);
   beginTurn();
 }
@@ -456,7 +578,7 @@ function renderEndScreen() {
       <div class="result-rank">${medal[i] || (i + 1)}</div>
       <div class="result-info">
         <div class="result-name">${r.team.icon} ${escapeHtml(r.team.name)}</div>
-        <div class="result-detail">功德 ${r.team.merit} + 残页价值 ${r.fragValue}(${r.fragCount} 张${r.fullSet ? ' · 集齐六度' : ''})</div>
+        <div class="result-detail">功德 ${r.team.merit} + 残页价值 ${r.fragValue}(${r.fragCount} 张${r.fullSet ? ' · 集齐六度' : ''}) · 🪔 点灯 ${r.team.lampsLit}</div>
         <div class="result-badges">${r.badges.join('　')}</div>
       </div>
       <div class="result-total">${r.total}</div>
@@ -469,6 +591,7 @@ function finishGame(reason) {
   if (state.phase === 'ended') return;
   state.phase = 'ended';
   hideModal();
+  DR.Map.hideStationTooltip();
   renderEndScreen();
   showScreen('screen-end');
 }
@@ -482,6 +605,7 @@ DR.UI = {
   renderBank,
   renderTimer,
   renderPhaseBanner,
+  renderPhaseTracker,
   beginTurn,
   onRollClick,
   onRolled,
@@ -492,6 +616,10 @@ DR.UI = {
   hideModal,
   finishGame,
   renderEndScreen,
+  wireRulesEvents,
+  openRules,
+  closeRules,
+  rulesOpen,
   escapeHtml,
   get modalMode() { return modalMode; },
 };
