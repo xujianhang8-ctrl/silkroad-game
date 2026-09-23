@@ -1,0 +1,5 @@
+tools/rules-video/frames/
+tools/rules-video/*.wav
+tools/rules-video/frames.json
+tools/rules-video/frames.ffconcat
+tools/rules-video/durations.json

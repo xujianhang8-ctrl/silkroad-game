@@ -29,10 +29,24 @@ function fmtAgo(ts) {
 
 // ================= 浮层管理 =================
 // Esc 按这个顺序关闭最上层的浮层
-const OVERLAYS = ['confirm-overlay', 'settings-overlay', 'rules-overlay', 'stats-overlay', 'pause-overlay'];
+const OVERLAYS = ['confirm-overlay', 'video-overlay', 'settings-overlay', 'rules-overlay', 'stats-overlay', 'pause-overlay'];
 function isOpen(id) { const el = $(id); return !!el && !el.classList.contains('hidden'); }
 function openOverlay(id) { $(id).classList.remove('hidden'); }
-function closeOverlay(id) { $(id).classList.add('hidden'); }
+function closeOverlay(id) {
+  const el = $(id);
+  el.classList.add('hidden');
+  el.querySelectorAll('video').forEach(v => v.pause()); // 关掉讲解视频时顺便暂停播放
+}
+
+// 三分钟讲解视频(AI 语音):主菜单、规则手册都能打开;游戏中打开时倒计时会暂停
+function openVideo() {
+  const v = $('rules-video');
+  openOverlay('video-overlay');
+  DR.Audio.click();
+  if (v.ended) v.currentTime = 0;
+  const p = v.play();
+  if (p && p.catch) p.catch(() => {});
+}
 
 function closeTopOverlay() {
   for (const id of OVERLAYS) {
@@ -144,6 +158,14 @@ function wireHome() {
   });
   $('home-continue').addEventListener('click', () => { DR.Audio.click(); DR.continueGame(); });
   $('home-rules').addEventListener('click', () => DR.UI.openRules());
+  $('home-video').addEventListener('click', openVideo);
+  $('btn-rules-video').addEventListener('click', openVideo);
+  // 两个格式都放不了(文件缺失或浏览器太旧)时,给出提示而不是一个黑框
+  const sources = document.querySelectorAll('#rules-video source');
+  sources[sources.length - 1].addEventListener('error', () => {
+    $('rules-video').classList.add('hidden');
+    $('rules-video-missing').classList.remove('hidden');
+  });
   $('home-codex').addEventListener('click', () => openCodex());
   $('home-honors').addEventListener('click', () => openHonors());
   $('home-settings').addEventListener('click', () => openSettings());
@@ -842,6 +864,7 @@ DR.Screens = {
   isOpen,
   openOverlay,
   closeOverlay,
+  openVideo,
   activeScreenId,
   get paused() { return paused; },
 };

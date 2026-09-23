@@ -167,6 +167,7 @@ var DR = window.DR || (window.DR = {});
         return;
       }
       if (DR.Screens.isOpen('confirm-overlay')) return; // 确认框打开时只响应 Esc 与按钮本身
+      if (DR.Screens.isOpen('video-overlay')) return;   // 看视频时空格等按键交给播放器,不要误触掷骰
       if (typing) return;
 
       if (key === 'r' || key === 'R') {

@@ -1403,3 +1403,9 @@ body.big-text .toast { font-size: 17px; }
 .save-chip { font-size: 13px; color: var(--gold-light); opacity: 0; transition: opacity .4s; white-space: nowrap; }
 .save-chip.show { opacity: .9; }
 @media (max-width: 1280px) { .save-chip { display: none; } }
+
+/* 讲解视频 */
+.video-box { width: min(1180px, 94vw); }
+.rules-video { display: block; width: 100%; max-height: calc(100vh - 180px); aspect-ratio: 16 / 9; background: #000; border-radius: 12px; }
+.video-missing { padding: 40px 20px; text-align: center; font-size: 20px; }
+#video-overlay { z-index: 80; }

@@ -23,6 +23,7 @@
       <nav class="home-menu" aria-label="主菜单">
         <button id="home-new" class="home-btn primary"><span class="hb-icon">🪔</span><span class="hb-text"><b>开启新旅程</b><small>组建队伍 · 选择路线 · 出发</small></span></button>
         <button id="home-continue" class="home-btn hidden"><span class="hb-icon">▶</span><span class="hb-text"><b>继续上次旅程</b><small id="home-continue-info"></small></span></button>
+        <button id="home-video" class="home-btn"><span class="hb-icon">🎬</span><span class="hb-text"><b>三分钟讲解视频</b><small>AI 语音讲解 · 边看边学怎么玩</small></span></button>
         <button id="home-rules" class="home-btn"><span class="hb-icon">📜</span><span class="hb-text"><b>规则手册</b><small>图文说明 · 一看就懂</small></span></button>
         <button id="home-codex" class="home-btn"><span class="hb-icon">📚</span><span class="hb-text"><b>丝路百科</b><small>站点 · 名胜 · 高僧 · 六度 · 小词典</small></span></button>
         <button id="home-honors" class="home-btn"><span class="hb-icon">🏆</span><span class="hb-text"><b>荣誉榜</b><small>历届旅程的精彩记录</small></span></button>
@@ -401,11 +402,28 @@
   </div>
 </div>
 
+<!-- ===================== 讲解视频 ===================== -->
+<div id="video-overlay" class="sheet-overlay hidden">
+  <div class="sheet-box video-box">
+    <div class="sheet-head">
+      <h2>🎬 三分钟学会丝路法灯</h2>
+      <span class="sheet-sub">AI 语音讲解 · 看完就会玩</span>
+      <button class="btn-icon sheet-close" data-close="video-overlay">✕ 关闭</button>
+    </div>
+    <video id="rules-video" class="rules-video" controls preload="metadata" playsinline>
+      <source src="media/rules-video.webm" type="video/webm">
+      <source src="media/rules-video.mp4" type="video/mp4">
+    </video>
+    <p id="rules-video-missing" class="video-missing hidden">😢 无法播放讲解视频。请确认 <code>media</code> 文件夹和 index.html 放在一起,或直接用播放器打开 <code>media/rules-video.mp4</code>。</p>
+  </div>
+</div>
+
 <!-- ===================== 规则手册(菜单式说明页) ===================== -->
 <div id="rules-overlay" class="rules-overlay hidden">
   <div class="rules-box">
     <div class="rules-head">
       <h2>📜 法灯规则手册</h2>
+      <button id="btn-rules-video" class="btn-icon" title="播放三分钟讲解视频">🎬 讲解视频</button>
       <button id="btn-rules-close" class="btn-icon" aria-label="关闭规则">✕ 关闭</button>
     </div>
     <div class="rules-body">
