@@ -293,7 +293,7 @@ button {
 #map-wrap.zoomed { cursor: grab; }
 #map-wrap.zoomed.panning { cursor: grabbing; }
 #map-wrap.panning, #map-wrap.panning * { user-select: none; }
-#map-canvas { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
+#map-canvas { position: absolute; inset: 0; transform-origin: 0 0; }
 #map-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #map-markers { position: absolute; inset: 0; pointer-events: none; }
 
@@ -349,12 +349,17 @@ button {
 .scale-bar-label { font-size: 10.5px; fill: #5a4a30; font-weight: bold; }
 
 .station-marker {
-  position: absolute; transform: translate(-50%, -50%);
+  position: absolute;
   display: flex; flex-direction: column; align-items: center;
-  cursor: pointer; pointer-events: auto; z-index: 5;
+  cursor: pointer; pointer-events: auto;
+  /* 地图放大时站点保持原本的屏幕大小(反向缩放),这样放大后拥挤的站点会被拉开,方便点选。
+     不设 z-index,避免每个站点自成层叠上下文:这样所有图标都能压在所有文字标签之上,
+     相邻站点的标签不会挡住别的站点图标的点击。 */
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
 }
+.station-marker .sm-label { position: relative; z-index: 1; }
 .station-marker .sm-icon {
-  position: relative; width: 28px; height: 28px; border-radius: 50%;
+  position: relative; z-index: 2; width: 28px; height: 28px; border-radius: 50%;
   background: rgba(255,255,255,0.88); border: 2px solid #8a6a2f;
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
@@ -399,7 +404,7 @@ button {
   border: 2px solid #333; display: flex; align-items: center; justify-content: center;
   box-shadow: 0 2px 5px rgba(0,0,0,0.45);
   transition: left 0.22s linear, top 0.22s linear;
-  pointer-events: auto;
+  pointer-events: none; /* 棋子叠在站点上方,不能挡住站点的点击 */
 }
 .token-pulse { animation: tokenPulse 0.9s ease; }
 
@@ -536,7 +541,9 @@ button {
 }
 .frag-btn .fb-icon { font-size: 26px; display: block; }
 .frag-btn.selected { border-color: var(--jade); background: #eafaf0; }
-.frag-btn:disabled { opacity: 0.4; }
+.frag-btn:not(:disabled):hover { border-color: var(--gold); background: #fff6df; }
+.frag-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.frag-btn .fb-why { color: var(--terracotta); font-weight: bold; }
 .sell-preview { font-size: 18px; font-weight: bold; margin: 10px 0; color: var(--terracotta); }
 
 .modal-buttons { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
@@ -641,6 +648,7 @@ button {
   padding: 10px 30px 10px 14px; max-width: 280px; box-shadow: var(--paper-shadow); z-index: 40;
 }
 #station-tooltip.hidden { display: none; }
+#station-tooltip.below { transform: translate(-50%, 0); }
 #station-tooltip .st-tip-type {
   display: block; font-size: 10.5px; font-weight: bold; color: var(--terracotta);
   text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px;

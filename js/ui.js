@@ -75,8 +75,21 @@ function wireSetupEvents() {
 
 // ---------------- 主界面渲染 ----------------
 
+// 往返进度(0~100%):去程占前 50%,归程占后 50%,数值连续不跳变。
+function journeyProgressPct(team) {
+  if (team.completed) return 100;
+  const path = team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+  const frac = path.length ? team.position / path.length : 0;
+  return Math.round(team.direction === 'back' ? 50 + (1 - frac) * 50 : frac * 50);
+}
+
 function renderTeamsPanel(state) {
   const el = $('teams-panel');
+  const rankOf = new Map(
+    state.teams.slice().sort((a, b) => DR.Game.totalScore(b) - DR.Game.totalScore(a))
+      .map((t, i) => [t.id, i])
+  );
+  const medal = ['🥇', '🥈', '🥉'];
   el.innerHTML = state.teams.map((team, i) => {
     const frags = DR.PARAMITAS.filter(p => team.backpack[p.key] > 0)
       .map(p => `<span class="frag-chip">${p.icon}${team.backpack[p.key]}</span>`).join('') || '<span class="frag-chip">空</span>';
@@ -84,8 +97,16 @@ function renderTeamsPanel(state) {
     if (team.completed) posLabel = '已回长安';
     else if (team.position === 0) posLabel = '长安(出发前)';
     else posLabel = (team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH)[team.position - 1].name;
+    const rank = rankOf.get(team.id);
+    const rankBadge = medal[rank] || `#${rank + 1}`;
     return `<div class="team-card ${i === state.activeIndex ? 'active' : ''}" data-team-id="${team.id}" style="border-left-color:${team.color}">
-      <div class="tc-head"><span>${team.icon} ${escapeHtml(team.name)}</span><span class="tc-merit">${team.merit} 功德</span></div>
+      <div class="tc-head">
+        <span class="tc-rank" title="当前排名(功德+残页价值)">${rankBadge}</span>
+        <span class="tc-name">${team.icon} ${escapeHtml(team.name)}</span>
+        <span class="tc-merit">${team.merit} 功德</span>
+        <button type="button" class="tc-detail-btn" data-team-id="${team.id}" title="查看队伍详情">🔍</button>
+      </div>
+      <div class="tc-progress"><div class="tc-progress-fill" style="width:${journeyProgressPct(team)}%;background:${team.color}"></div></div>
       <div class="tc-sub">${team.route === 'land' ? '🐫 陆路' : '⛵ 海路'} · ${escapeHtml(posLabel)}
         ${team.direction === 'back' && !team.completed ? '(归途)' : ''}
         ${team.completed ? '<span class="tc-done">✓ 圆满</span>' : ''}
@@ -97,9 +118,52 @@ function renderTeamsPanel(state) {
 
 function wireTeamsPanelClick() {
   $('teams-panel').addEventListener('click', e => {
+    const detailBtn = e.target.closest('.tc-detail-btn');
+    if (detailBtn) {
+      showModal('teamDetail', { teamId: +detailBtn.dataset.teamId });
+      return;
+    }
     const card = e.target.closest('.team-card');
     if (!card) return;
     DR.Map.pulseTeamToken(+card.dataset.teamId);
+  });
+}
+
+// ---------------- 侧栏标签页(队伍 / 图鉴 / 见闻,三块内容分屏显示,不再挤在一起) ----------------
+
+const SIDE_TAB_PANELS = { teams: 'teams-panel', legend: 'paramita-legend', log: 'journey-log' };
+let activeSideTab = 'teams';
+let lastSeenLogCount = 0;
+
+function setSideTab(tab) {
+  if (!SIDE_TAB_PANELS[tab]) return;
+  activeSideTab = tab;
+  document.querySelectorAll('.side-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.side-view').forEach(v => v.classList.toggle('active', v.id === SIDE_TAB_PANELS[tab]));
+  if (tab === 'log' && DR.state) lastSeenLogCount = DR.state.log.length;
+  updateLogBadge();
+}
+
+function resetSideTabs() {
+  lastSeenLogCount = 0;
+  setSideTab('teams');
+}
+
+function updateLogBadge() {
+  const badge = $('log-badge');
+  if (!badge) return;
+  const unseen = DR.state ? Math.max(0, DR.state.log.length - lastSeenLogCount) : 0;
+  const show = activeSideTab !== 'log' && unseen > 0;
+  badge.classList.toggle('hidden', !show);
+  if (show) badge.textContent = unseen > 9 ? '9+' : String(unseen);
+}
+
+function wireSideTabs() {
+  $('side-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.side-tab-btn');
+    if (!btn) return;
+    DR.Audio.click();
+    setSideTab(btn.dataset.tab);
   });
 }
 
@@ -127,6 +191,7 @@ function renderJourneyLog(state) {
   el.innerHTML = entries.length
     ? entries.map(msg => `<div class="log-entry">${escapeHtml(msg)}</div>`).join('')
     : '<div class="log-empty">旅程尚未开始,快掷骰子出发吧!</div>';
+  updateLogBadge();
 }
 
 function renderBank(state) { $('bank-display').textContent = state.bank; }
@@ -173,12 +238,28 @@ function renderAll() {
   // must be re-fitted before tokens are laid out, or its percentage coordinates drift.
   DR.Map.fitMapBox();
   DR.Map.layoutTokens(state);
+  DR.Map.updateVisitedMarks(state);
   renderTeamsPanel(state);
   renderBank(state);
   renderTimer(state);
   renderPhaseBanner(state);
   renderPhaseTracker(state);
   renderJourneyLog(state);
+}
+
+// ---------------- 地图放大 / 缩小 ----------------
+
+let mapExpanded = false;
+
+function toggleMapExpand() {
+  if (!DR.state) return;
+  mapExpanded = !mapExpanded;
+  $('main-lower').classList.toggle('map-expanded', mapExpanded);
+  const btn = $('btn-toggle-map');
+  btn.textContent = mapExpanded ? '⤡' : '⤢';
+  btn.title = mapExpanded ? '缩小地图' : '放大地图';
+  DR.Audio.click();
+  DR.Map.fitMapBox();
 }
 
 // ---------------- 弹窗 ----------------
@@ -206,6 +287,7 @@ function renderModal() {
   else if (modalMode === 'trade') renderTradeModal();
   else if (modalMode === 'home') renderHomeModal();
   else if (modalMode === 'confirmEnd') renderConfirmEndModal();
+  else if (modalMode === 'teamDetail') renderTeamDetailModal();
 }
 
 function lampBonusLine(result) {
@@ -244,6 +326,54 @@ function renderHomeModal() {
     <h2>🎉 功德圆满!</h2>
     <p class="modal-text">${data.team.icon} ${escapeHtml(data.team.name)} 完成了往返旅程,平安回到长安,将佛法带回了故乡!</p>
     <div class="modal-buttons"><button id="modal-confirm-btn" class="btn-primary modal-confirm">太好了!</button></div>
+  `;
+  $('modal-confirm-btn').addEventListener('click', hideModal);
+}
+
+function renderTeamDetailModal() {
+  const state = DR.state;
+  const team = state.teams.find(t => t.id === modalData.teamId);
+  const box = $('modal-box');
+  if (!team) { hideModal(); return; }
+
+  const path = team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+  let posLabel;
+  if (team.completed) posLabel = '已回长安 · 功德圆满';
+  else if (team.position === 0) posLabel = '长安(出发前)';
+  else posLabel = path[team.position - 1].name + (team.direction === 'back' ? '(归途)' : '');
+
+  const fragValue = DR.Game.fragmentValue(team);
+  const fullSet = DR.PARAMITAS.every(p => team.backpack[p.key] >= 1);
+  const fragRows = DR.PARAMITAS.map(p => {
+    const count = team.backpack[p.key];
+    return `<div class="td-frag-row ${count ? '' : 'td-frag-empty'}">
+      <span class="td-frag-icon" style="background:${p.color}">${p.icon}</span>
+      <span class="td-frag-name">${p.name}</span>
+      <span class="td-frag-count">×${count}</span>
+      <span class="td-frag-value">${count ? '值 ' + (count * p.value) : '—'}</span>
+    </div>`;
+  }).join('');
+  const lampStations = DR.Game.teamLampStations(state, team);
+  const progress = journeyProgressPct(team);
+
+  box.innerHTML = `
+    <h2 style="color:${team.color}">${team.icon} ${escapeHtml(team.name)} · 队伍详情</h2>
+    <div class="td-progress-row">
+      <div class="tc-progress td-progress-big"><div class="tc-progress-fill" style="width:${progress}%;background:${team.color}"></div></div>
+      <span class="td-progress-label">${progress}% · ${escapeHtml(posLabel)}</span>
+    </div>
+    <div class="td-stats-grid">
+      <div class="td-stat"><b>${team.merit}</b><span>功德</span></div>
+      <div class="td-stat"><b>${fragValue}</b><span>残页价值</span></div>
+      <div class="td-stat"><b>${team.correctAnswers}</b><span>答对问答</span></div>
+      <div class="td-stat"><b>${team.turnsTaken}</b><span>掷骰次数</span></div>
+      <div class="td-stat"><b>${team.lampsLit}/${DR.CONFIG.lampMaxPerTeam}</b><span>点亮法灯</span></div>
+      <div class="td-stat"><b>${team.visited.size}</b><span>到访站点</span></div>
+    </div>
+    <h3 class="td-subhead">🎴 六度残页行囊(${DR.Game.backpackTotal(team)}/${team.backpackCap})${fullSet ? ' · 已集齐!' : ''}</h3>
+    <div class="td-frag-list">${fragRows}</div>
+    ${lampStations.length ? `<h3 class="td-subhead">🪔 点亮的法灯</h3><p class="td-lamp-list">${lampStations.map(escapeHtml).join('、')}</p>` : ''}
+    <div class="modal-buttons"><button id="modal-confirm-btn" class="btn-secondary modal-confirm">关闭</button></div>
   `;
   $('modal-confirm-btn').addEventListener('click', hideModal);
 }
@@ -308,8 +438,9 @@ function renderTradeModal() {
     inner = `<div class="frag-grid">${station.offers.map(key => {
       const def = DR.PARAMITAS.find(p => p.key === key);
       const canAfford = team.merit >= def.buyCost;
-      return `<button class="frag-btn buy-frag-btn" data-key="${key}" ${(!canAfford || full) ? 'disabled' : ''}>
-        <span class="fb-icon">${def.icon}</span>${def.name}<br><small>花费 ${def.buyCost} 功德</small></button>`;
+      const why = full ? '行囊已满' : (!canAfford ? '功德不足' : '');
+      return `<button class="frag-btn buy-frag-btn" data-key="${key}" ${why ? `disabled title="${why}"` : ''}>
+        <span class="fb-icon">${def.icon}</span>${def.name}<br><small>花费 ${def.buyCost} 功德</small>${why ? `<br><small class="fb-why">${why}</small>` : ''}</button>`;
     }).join('')}</div>
     <p class="tc-sub">你的功德:${team.merit} · 行囊 ${DR.Game.backpackTotal(team)}/${team.backpackCap}${full ? '(已满)' : ''}</p>`;
   } else if (tradeTab === 'swap') {
@@ -328,7 +459,8 @@ function renderTradeModal() {
     const totalCount = held.reduce((s, p) => s + team.backpack[p.key], 0);
     const fullSet = DR.PARAMITAS.every(p => team.backpack[p.key] >= 1);
     const preview = totalValue + (fullSet ? DR.CONFIG.fullSetBonus : 0);
-    inner = `<div class="frag-grid">${held.length ? held.map(p => `<div class="frag-btn"><span class="fb-icon">${p.icon}</span>${p.name} ×${team.backpack[p.key]}<br><small>每张值 ${p.value}</small></div>`).join('') : '<p>行囊是空的,暂时无法兑换。</p>'}</div>
+    inner = `${held.length ? '<p class="tc-sub">点击某张残页可单独兑换一张,或点击下方按钮全部兑换:</p>' : ''}
+      <div class="frag-grid">${held.length ? held.map(p => `<button class="frag-btn sell-frag-btn" data-key="${p.key}"><span class="fb-icon">${p.icon}</span>${p.name} ×${team.backpack[p.key]}<br><small>每张值 ${p.value}</small></button>`).join('') : '<p>行囊是空的,暂时无法兑换。</p>'}</div>
       ${held.length ? `<p class="sell-preview">预计获得:${preview} 功德(共 ${totalCount} 张${fullSet ? ' · 集齐六度奖励 +' + DR.CONFIG.fullSetBonus : ''})</p>
       <div class="modal-buttons"><button id="btn-confirm-sell" class="btn-primary">译讲弘法,全部兑换</button></div>` : ''}`;
   }
@@ -364,6 +496,10 @@ function renderTradeModal() {
     }));
   }
   if (tradeTab === 'sell') {
+    box.querySelectorAll('.sell-frag-btn').forEach(b => b.addEventListener('click', e => {
+      const res = DR.Game.sellFragments(DR.state, [e.currentTarget.dataset.key]);
+      if (res.ok) { DR.Audio.good(); renderTeamsPanel(DR.state); renderBank(DR.state); renderJourneyLog(DR.state); renderModal(); }
+    }));
     const btn = $('btn-confirm-sell');
     if (btn) btn.addEventListener('click', () => {
       const keys = [];
@@ -643,6 +779,9 @@ DR.UI = {
   renderPhaseTracker,
   renderParamitaLegend,
   renderJourneyLog,
+  wireSideTabs,
+  resetSideTabs,
+  toggleMapExpand,
   beginTurn,
   onRollClick,
   onRolled,

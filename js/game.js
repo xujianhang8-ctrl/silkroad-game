@@ -375,11 +375,28 @@ DR.Game = {
     return state.bank <= 0;
   },
 
+  // 残页总价值(含集齐六度奖励)——排行榜、队伍详情、结算页共用同一套算法。
+  fragmentValue(team) {
+    const fullSet = hasFullSet(team);
+    return DR.PARAMITAS.reduce((sum, p) => sum + p.value * team.backpack[p.key], 0) + (fullSet ? DR.CONFIG.fullSetBonus : 0);
+  },
+
+  totalScore(team) {
+    return team.merit + this.fragmentValue(team);
+  },
+
+  // 某队在哪些站点点亮过法灯(用于队伍详情面板展示)。
+  teamLampStations(state, team) {
+    return Object.values(state.lampOwners)
+      .filter(o => o.teamId === team.id)
+      .map(o => o.stationName);
+  },
+
   computeResults(state) {
     const rows = state.teams.map(team => {
       const fragCount = backpackCount(team);
       const fullSet = hasFullSet(team);
-      const fragValue = DR.PARAMITAS.reduce((sum, p) => sum + p.value * team.backpack[p.key], 0) + (fullSet ? DR.CONFIG.fullSetBonus : 0);
+      const fragValue = this.fragmentValue(team);
       return {
         team,
         fragCount,

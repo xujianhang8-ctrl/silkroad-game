@@ -40,6 +40,7 @@ var DR = window.DR || (window.DR = {});
     DR.state.soundOn = DR.setup.soundOn;
     $('btn-mute').textContent = DR.state.soundOn ? '🔊' : '🔇';
     DR.UI.showScreen('screen-game');
+    DR.UI.resetSideTabs();
     DR.Map.renderMapChrome();
     DR.Map.initTokens(DR.state);
     DR.Map.fitMapBox();
@@ -52,6 +53,7 @@ var DR = window.DR || (window.DR = {});
   function wireGameEvents() {
     $('btn-roll').addEventListener('click', DR.UI.onRollClick);
     $('btn-next-team').addEventListener('click', DR.UI.onNextTeamClick);
+    $('btn-toggle-map').addEventListener('click', DR.UI.toggleMapExpand);
 
     $('btn-fullscreen').addEventListener('click', () => {
       if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
@@ -91,6 +93,12 @@ var DR = window.DR || (window.DR = {});
       if (DR.UI.rulesOpen()) return; // 规则手册打开时,不响应游戏内快捷键
 
       if (!DR.state || DR.state.phase === 'ended') return;
+
+      if ((e.key === 'm' || e.key === 'M') && !typing) {
+        e.preventDefault();
+        DR.UI.toggleMapExpand();
+        return;
+      }
       const overlayOpen = !$('modal-overlay').classList.contains('hidden');
 
       if (e.code === 'Space') {
@@ -99,6 +107,8 @@ var DR = window.DR || (window.DR = {});
         return;
       }
       if (e.key === 'Enter') {
+        // 阻止浏览器对"当前聚焦按钮"的默认 Enter 点击,否则会和下面的逻辑重复触发两次操作。
+        e.preventDefault();
         if (overlayOpen) {
           const confirmBtn = document.querySelector('.modal-confirm');
           if (confirmBtn) confirmBtn.click();
@@ -129,8 +139,10 @@ var DR = window.DR || (window.DR = {});
     wireGameEvents();
     wireKeyboard();
     DR.UI.wireTeamsPanelClick();
+    DR.UI.wireSideTabs();
     DR.UI.wireRulesEvents();
     DR.Map.wireTooltipDismiss();
+    DR.Map.wireMapZoomPan();
     window.addEventListener('resize', () => { if (DR.state) DR.Map.fitMapBox(); });
   });
 })();
