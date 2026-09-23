@@ -81,18 +81,33 @@
 
   <div id="main-lower">
     <aside id="side-panel">
-      <div id="teams-panel"></div>
-      <div id="paramita-legend" class="paramita-legend"></div>
-      <div id="journey-log" class="journey-log">
-        <h4 class="journey-log-title">📜 道路见闻</h4>
-        <div id="journey-log-list" class="journey-log-list"></div>
+      <nav id="side-tabs" class="side-tabs">
+        <button class="side-tab-btn active" data-tab="teams">👥<span>队伍</span></button>
+        <button class="side-tab-btn" data-tab="legend">🎴<span>图鉴</span></button>
+        <button class="side-tab-btn" data-tab="log">📜<span>见闻</span><span id="log-badge" class="tab-badge hidden">0</span></button>
+      </nav>
+      <div class="side-views">
+        <div id="teams-panel" class="side-view active"></div>
+        <div id="paramita-legend" class="side-view paramita-legend"></div>
+        <div id="journey-log" class="side-view journey-log">
+          <div id="journey-log-list" class="journey-log-list"></div>
+        </div>
       </div>
     </aside>
 
     <div id="main-stage">
       <div id="map-wrap">
-        <svg id="map-svg" viewBox="0 0 1080 640" preserveAspectRatio="xMidYMid meet"></svg>
-        <div id="map-markers"></div>
+        <div id="map-canvas">
+          <svg id="map-svg" viewBox="0 0 1080 640" preserveAspectRatio="xMidYMid meet"></svg>
+          <div id="map-markers"></div>
+        </div>
+        <div id="map-toolbar" class="map-toolbar">
+          <button id="btn-zoom-out" class="map-zoom-btn" title="缩小(拉远)">－</button>
+          <input id="zoom-slider" type="range" class="zoom-slider" min="0" max="100" value="0" step="1" title="拖动可缩放地图" aria-label="地图缩放">
+          <button id="btn-zoom-in" class="map-zoom-btn" title="放大(拉近)">＋</button>
+          <span id="zoom-pct" class="zoom-pct">0%</span>
+          <button id="btn-toggle-map" class="map-toolbar-btn" title="放大整体视图">⤢</button>
+        </div>
         <div class="map-legend">
           <span><i class="leg-swatch leg-land"></i>🐫 陆路</span>
           <span><i class="leg-swatch leg-sea"></i>⛵ 海路</span>
@@ -100,7 +115,7 @@
           <span>⭐ 剧情</span>
           <span>🪷 终点</span>
           <span>🪔 已点灯</span>
-          <span class="leg-hint">点击地图上的站点可查看小知识</span>
+          <span class="leg-hint">点击站点查看小知识 · 拖动滑块缩放地图,缩放后可按住拖动查看细节 · ⤢ 放大整体视图</span>
         </div>
       </div>
 
@@ -124,8 +139,10 @@
 
 <div id="station-tooltip" class="hidden">
   <button class="st-tip-close" aria-label="关闭">×</button>
+  <span class="st-tip-type"></span>
   <h4 class="st-tip-title"></h4>
   <p class="st-tip-body"></p>
+  <div class="st-tip-offers hidden"></div>
 </div>
 
 <!-- ===================== 结算界面 ===================== -->

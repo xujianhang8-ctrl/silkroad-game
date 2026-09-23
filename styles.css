@@ -219,11 +219,29 @@ button {
 #main-lower { flex: 1 1 auto; display: flex; overflow: hidden; }
 #side-panel {
   flex: 0 0 260px; display: flex; flex-direction: column; min-height: 0;
-  background: rgba(0,0,0,0.15);
+  background: rgba(0,0,0,0.15); transition: opacity 0.15s ease;
 }
 #teams-panel {
   flex: 0 0 auto; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
 }
+
+/* ---- 侧栏标签页(队伍 / 图鉴 / 见闻,分屏显示,不再挤成一列) ---- */
+.side-tabs { display: flex; flex: 0 0 auto; gap: 4px; padding: 8px 8px 0; }
+.side-tab-btn {
+  flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.65); position: relative;
+  border-radius: 10px 10px 0 0; padding: 8px 4px 7px; font-size: 11px; font-weight: bold;
+  border: 1px solid transparent; border-bottom: none; transition: all 0.15s;
+}
+.side-tab-btn:hover { background: rgba(255,255,255,0.12); color: white; }
+.side-tab-btn.active { background: rgba(255,255,255,0.16); color: var(--gold-light); border-color: rgba(232,196,104,0.4); }
+.tab-badge {
+  position: absolute; top: 3px; right: 8px; background: var(--terracotta); color: white;
+  font-size: 9.5px; font-weight: bold; border-radius: 8px; padding: 1px 5px; line-height: 1.3;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+.side-views { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.side-view:not(.active) { display: none !important; }
 
 /* ---- 六度残页速览(常驻小图鉴) ---- */
 .paramita-legend {
@@ -251,11 +269,7 @@ button {
   background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);
   overflow: hidden;
 }
-.journey-log-title {
-  flex: 0 0 auto; margin: 0; padding: 8px 12px 6px; font-size: 12.5px; color: var(--gold-light);
-  border-bottom: 1px dashed rgba(255,255,255,0.12);
-}
-.journey-log-list { flex: 1 1 auto; overflow-y: auto; padding: 6px 10px 10px; }
+.journey-log-list { flex: 1 1 auto; overflow-y: auto; padding: 10px 10px 10px; }
 .log-entry {
   font-size: 12px; line-height: 1.5; padding: 4px 0; opacity: 0.92;
   border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -273,19 +287,66 @@ button {
   position: relative; flex: 0 0 auto; width: 100%; aspect-ratio: 1080 / 640;
   border-radius: 16px; overflow: hidden; border: 3px solid #8a6a2f;
   box-shadow: var(--paper-shadow); background: #dcc98f;
+  transition: width 0.25s ease, height 0.25s ease;
+  touch-action: none;
 }
+#map-wrap.zoomed { cursor: grab; }
+#map-wrap.zoomed.panning { cursor: grabbing; }
+#map-wrap.panning, #map-wrap.panning * { user-select: none; }
+#map-canvas { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
 #map-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #map-markers { position: absolute; inset: 0; pointer-events: none; }
 
+.map-toolbar {
+  position: absolute; top: 8px; right: 8px; z-index: 20; pointer-events: auto;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(244,236,216,0.92); border: 2px solid var(--gold); border-radius: 10px;
+  padding: 4px 8px; box-shadow: var(--paper-shadow);
+}
+.map-zoom-btn {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; padding: 0;
+  background: var(--gold); color: white; font-size: 14px; font-weight: bold; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.map-zoom-btn:hover { background: var(--gold-light); }
+.zoom-slider {
+  -webkit-appearance: none; appearance: none; width: 70px; height: 4px; margin: 0;
+  background: rgba(0,0,0,0.18); border-radius: 3px; outline: none; cursor: pointer;
+}
+.zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+  background: var(--terracotta); border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.4); cursor: pointer;
+}
+.zoom-slider::-moz-range-track { background: rgba(0,0,0,0.18); border-radius: 3px; height: 4px; }
+.zoom-slider::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%; background: var(--terracotta);
+  border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.4); cursor: pointer;
+}
+.zoom-pct {
+  flex: 0 0 auto; min-width: 30px; text-align: right; font-size: 11px; font-weight: bold;
+  color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.map-toolbar-btn {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px; padding: 0;
+  background: rgba(255,255,255,0.6); color: var(--ink);
+  font-size: 15px; display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s, background 0.15s;
+}
+.map-toolbar-btn:hover { background: white; transform: scale(1.07); }
+
 .route-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.route-land { stroke: #8a5a2f; stroke-width: 5; stroke-dasharray: 2 12; }
-.route-sea { stroke: #2f6483; stroke-width: 5; stroke-dasharray: 2 12; }
-.compass-label, .cartouche-title, .cartouche-sub {
+.route-land-casing, .route-sea-casing { stroke-width: 9; opacity: 0.22; }
+.route-land-casing { stroke: #5c3d1a; }
+.route-sea-casing { stroke: #163a52; }
+.route-land { stroke: #8a5a2f; stroke-width: 4; stroke-dasharray: 3 11; animation: dashFlow 7s linear infinite; }
+.route-sea { stroke: #3b82c4; stroke-width: 4; stroke-dasharray: 3 11; animation: dashFlow 7s linear infinite reverse; }
+.compass-label, .cartouche-title, .cartouche-sub, .scale-bar-label {
   font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
 }
 .compass-label { font-size: 16px; fill: #8a6a2f; font-weight: bold; }
 .cartouche-title { font-size: 17px; fill: #b2503b; font-weight: bold; }
 .cartouche-sub { font-size: 12px; fill: #5a4a30; }
+.scale-bar-label { font-size: 10.5px; fill: #5a4a30; font-weight: bold; }
 
 .station-marker {
   position: absolute; transform: translate(-50%, -50%);
@@ -300,8 +361,14 @@ button {
   transition: transform 0.15s;
 }
 .station-marker:hover .sm-icon { transform: scale(1.2); }
-.station-marker.site .sm-icon { border-color: var(--gold); background: #fff3d6; }
-.station-marker.final .sm-icon { border-color: var(--terracotta); background: #ffe3da; width: 36px; height: 36px; font-size: 19px; }
+.station-marker.site .sm-icon {
+  border-color: var(--gold); background: #fff3d6;
+  box-shadow: 0 0 0 3px rgba(201,153,47,0.3), 0 2px 5px rgba(0,0,0,0.3);
+}
+.station-marker.final .sm-icon {
+  border-color: var(--terracotta); background: #ffe3da; width: 36px; height: 36px; font-size: 19px;
+  animation: finalGlow 2.6s ease-in-out infinite;
+}
 .station-marker.story .sm-icon { border-color: var(--jade); }
 .station-marker .sm-label {
   font-size: 10.5px; color: #2c2418; background: rgba(244,236,216,0.9);
@@ -323,6 +390,9 @@ button {
 }
 .station-marker.lit .sm-icon { box-shadow: 0 0 0 3px rgba(232, 196, 104, 0.55), 0 2px 5px rgba(0,0,0,0.3); }
 
+.visited-dots { position: absolute; bottom: -2px; left: -2px; display: flex; gap: 2px; pointer-events: none; }
+.visited-dots i { width: 5px; height: 5px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.85); display: block; box-shadow: 0 0 1px rgba(0,0,0,0.5); }
+
 .token {
   position: absolute; z-index: 10;
   font-size: 15px; width: 25px; height: 25px; border-radius: 50%; background: white;
@@ -337,22 +407,41 @@ button {
   position: absolute; right: 8px; bottom: 8px; background: rgba(244,236,216,0.92);
   border: 2px solid var(--gold); border-radius: 10px; padding: 5px 10px;
   display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--ink);
-  max-width: 78%; pointer-events: none; align-items: center;
+  max-width: 78%; pointer-events: none; align-items: center; box-shadow: var(--paper-shadow);
 }
 .leg-swatch { display: inline-block; width: 14px; height: 3px; margin-right: 3px; vertical-align: middle; border-radius: 2px; }
 .leg-land { background: #8a5a2f; }
 .leg-sea { background: #2f6483; }
 .leg-hint { opacity: 0.7; font-style: italic; }
+
+/* ---- 地图放大模式:收起侧栏让地图占满,站点/棋子同步放大 ---- */
+#main-lower.map-expanded #side-panel { flex: 0 0 0; opacity: 0; overflow: hidden; pointer-events: none; }
+#main-lower.map-expanded .station-marker .sm-icon { width: 34px; height: 34px; font-size: 17px; }
+#main-lower.map-expanded .station-marker.final .sm-icon { width: 46px; height: 46px; font-size: 23px; }
+#main-lower.map-expanded .home-marker .sm-icon { width: 46px; height: 46px; font-size: 24px; }
+#main-lower.map-expanded .station-marker .sm-label { font-size: 12.5px; padding: 2px 7px; }
+#main-lower.map-expanded .token { width: 30px; height: 30px; font-size: 18px; }
+
 .team-card {
   border-radius: 12px; padding: 8px 10px; background: rgba(255,255,255,0.06);
   border-left: 6px solid var(--gold); font-size: 13px;
 }
 .team-card.active { background: rgba(255,255,255,0.18); box-shadow: 0 0 0 2px var(--gold-light); }
-.team-card .tc-head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: bold; }
-.team-card .tc-merit { color: var(--gold-light); font-weight: bold; }
+.team-card .tc-head { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: bold; }
+.tc-rank { flex: 0 0 auto; min-width: 20px; text-align: center; font-size: 12px; opacity: 0.85; }
+.tc-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-card .tc-merit { color: var(--gold-light); font-weight: bold; flex: 0 0 auto; white-space: nowrap; }
+.tc-detail-btn {
+  flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border-radius: 8px;
+  background: rgba(255,255,255,0.12); color: white; font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+.tc-detail-btn:hover { background: rgba(255,255,255,0.3); }
+.tc-progress { height: 4px; background: rgba(255,255,255,0.14); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.tc-progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
 .team-card .tc-frags { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
 .frag-chip { font-size: 11px; background: rgba(255,255,255,0.12); padding: 1px 6px; border-radius: 8px; }
-.tc-sub { opacity: 0.75; margin-top: 2px; }
+.tc-sub { opacity: 0.75; margin-top: 4px; }
 .tc-done { color: var(--jade); font-weight: bold; margin-left: 6px; }
 .tc-lamp { color: var(--gold-light); font-weight: bold; margin-left: 6px; }
 
@@ -452,6 +541,25 @@ button {
 
 .modal-buttons { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
 
+/* ---- 队伍详情弹窗 ---- */
+.td-progress-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 18px; }
+.td-progress-row .tc-progress { flex: 1 1 auto; background: rgba(0,0,0,0.12); }
+.td-progress-big { height: 8px; }
+.td-progress-label { font-size: 13px; white-space: nowrap; opacity: 0.75; }
+.td-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+.td-stat { background: rgba(0,0,0,0.05); border-radius: 12px; padding: 10px 6px; text-align: center; }
+.td-stat b { display: block; font-size: 20px; color: var(--terracotta); }
+.td-stat span { font-size: 12px; opacity: 0.7; }
+.td-subhead { margin: 16px 0 8px; font-size: 15px; color: var(--terracotta); }
+.td-frag-list { display: flex; flex-direction: column; gap: 6px; }
+.td-frag-row { display: flex; align-items: center; gap: 10px; background: white; border-radius: 10px; padding: 6px 12px; font-size: 14px; }
+.td-frag-row.td-frag-empty { opacity: 0.45; }
+.td-frag-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex: 0 0 auto; }
+.td-frag-name { flex: 1 1 auto; font-weight: bold; }
+.td-frag-count { opacity: 0.8; }
+.td-frag-value { color: var(--jade); font-weight: bold; min-width: 60px; text-align: right; }
+.td-lamp-list { font-size: 14px; line-height: 1.6; }
+
 /* ===================== 规则手册(菜单式说明页) ===================== */
 .rules-overlay {
   position: fixed; inset: 0; background: rgba(10, 8, 25, 0.72); z-index: 55;
@@ -530,11 +638,17 @@ button {
 #station-tooltip {
   position: fixed; transform: translate(-50%, -100%);
   background: var(--parchment); border: 2px solid var(--gold); border-radius: 12px;
-  padding: 10px 30px 10px 14px; max-width: 260px; box-shadow: var(--paper-shadow); z-index: 40;
+  padding: 10px 30px 10px 14px; max-width: 280px; box-shadow: var(--paper-shadow); z-index: 40;
 }
 #station-tooltip.hidden { display: none; }
+#station-tooltip .st-tip-type {
+  display: block; font-size: 10.5px; font-weight: bold; color: var(--terracotta);
+  text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px;
+}
 #station-tooltip .st-tip-title { margin: 0 0 4px; color: var(--terracotta); font-size: 15px; }
 #station-tooltip .st-tip-body { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink); }
+#station-tooltip .st-tip-offers { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+.st-offer-chip { color: white; padding: 2px 7px; border-radius: 8px; font-size: 10.5px; font-weight: 600; }
 #station-tooltip .st-tip-close {
   position: absolute; top: 2px; right: 6px; background: none; border: none; font-size: 18px;
   color: #888; cursor: pointer; line-height: 1; padding: 4px;
@@ -581,10 +695,14 @@ button {
   25% { transform: rotate(-12deg); }
   75% { transform: rotate(12deg); }
 }
+@keyframes dashFlow { to { stroke-dashoffset: -140; } }
+@keyframes finalGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(178,80,59,0.45), 0 2px 5px rgba(0,0,0,0.3); }
+  50% { box-shadow: 0 0 0 9px rgba(178,80,59,0.22), 0 2px 5px rgba(0,0,0,0.3); }
+}
 @media (max-width: 900px) {
   #main-lower { flex-direction: column; }
   #side-panel { flex: 0 0 auto; max-height: 26vh; }
   #teams-panel { flex-direction: row; flex-wrap: wrap; max-height: 22vh; }
   .team-card { flex: 1 1 220px; }
-  .paramita-legend, .journey-log { display: none; }
 }
