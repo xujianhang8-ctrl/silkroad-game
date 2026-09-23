@@ -166,8 +166,10 @@ DR.Game = {
       team.merit += actual;
       return actual;
     } else if (delta < 0) {
+      // 扣掉的功德回到功德库(和买残页、点灯一样),功德总量守恒
       const loss = Math.min(-delta, team.merit);
       team.merit -= loss;
+      state.bank += loss;
       return -loss;
     }
     return 0;
@@ -196,17 +198,29 @@ DR.Game = {
       if (effect.merit > 0) this.log(state, `${team.icon}${team.name} 获得 ${actual} 点功德。`);
       else if (actual < 0) this.log(state, `${team.icon}${team.name} 损失了 ${-actual} 点功德。`);
     }
-    if (effect.fragment) {
-      this.grantFragment(state, team, effect.fragment);
-    }
     if (effect.skipNext) {
       team.skipNext = true;
       this.log(state, `${team.icon}${team.name} 下回合需要暂停一次。`);
     }
     if (effect.backpackBonus) {
-      team.backpackCap += effect.backpackBonus;
-      this.log(state, `${team.icon}${team.name} 的行囊容量增加了!`);
+      const cap = Math.min(team.backpackCap + effect.backpackBonus, DR.CONFIG.backpackCapacityUpgraded);
+      if (cap > team.backpackCap) {
+        team.backpackCap = cap;
+        this.log(state, `🎒 ${team.icon}${team.name} 的行囊扩充到 ${cap} 格,可以集齐六度了!`);
+      }
     }
+    if (effect.fragment) {
+      this.grantFragment(state, team, effect.fragment);
+    }
+  },
+
+  // 被"暂停一次"的队伍:回合开始时直接原地休整,不用掷骰(也不计入掷骰次数)
+  resolveSkip(state) {
+    const team = this.activeTeam(state);
+    if (!team.skipNext) return false;
+    team.skipNext = false;
+    this.log(state, `${team.icon}${team.name} 暂停一回合,原地休整。`);
+    return true;
   },
 
   rollDice(state) {
@@ -266,7 +280,7 @@ DR.Game = {
       const visitorGain = this.changeMerit(state, team, DR.CONFIG.lampPassBonusVisitor);
       const ownerGain = this.changeMerit(state, ownerTeam, DR.CONFIG.lampPassBonusOwner);
       if (visitorGain > 0 || ownerGain > 0) {
-        this.log(state, `🪔 路过${ownerTeam.icon}${ownerTeam.name}点亮的法灯,${team.icon}${team.name} 随喜获得 ${visitorGain} 点功德,${ownerTeam.name} 也获得 ${ownerGain} 点。`);
+        this.log(state, `🪔 落脚在${ownerTeam.icon}${ownerTeam.name}点亮的法灯,${team.icon}${team.name} 随喜获得 ${visitorGain} 点功德,${ownerTeam.name} 也获得 ${ownerGain} 点。`);
         result.lampBonus = { ownerTeam, visitorGain, ownerGain };
       }
     }
@@ -359,9 +373,13 @@ DR.Game = {
     return { ok: true };
   },
 
+  // 以法结缘每回合限一次:否则"买便宜残页 → 换成贵的 → 兑换功德"可以无限循环刷功德
   swapFragment(state, giveKey, takeKey) {
     const team = this.activeTeam(state);
+    if (state.swapUsed) return { ok: false, reason: '本回合已经结缘过了' };
+    if (giveKey === takeKey) return { ok: false, reason: '换的是同一种残页' };
     if (team.backpack[giveKey] <= 0) return { ok: false, reason: '没有可交换的残页' };
+    state.swapUsed = true;
     team.backpack[giveKey]--;
     team.backpack[takeKey]++;
     const g = paramita(giveKey);
@@ -409,13 +427,24 @@ DR.Game = {
   attemptCrossover(state) {
     const team = this.activeTeam(state);
     const station = this.currentStation(state, team);
-    if (!station || !station.crossover || team.hasSwitched) return { ok: false };
+    if (!station || !station.crossover || team.hasSwitched || team.direction !== 'out') return { ok: false };
     team.route = team.route === 'land' ? 'sea' : 'land';
     team.position = team.route === 'land' ? DR.CONFIG.landCrossoverPos : DR.CONFIG.seaCrossoverPos;
     team.hasSwitched = true;
-    team.visited.add(team.route + ':' + team.position);
+    const visitKey = team.route + ':' + team.position;
+    team.visited.add(visitKey);
     this.log(state, `${team.icon}${team.name} 在此改换了${team.route === 'land' ? '陆路(骆驼)' : '海路(商船)'}!`);
-    return { ok: true, newRoute: team.route };
+    const newStation = this.currentStation(state, team);
+    // 换乘后站在新站点上:集市里的结缘 / 点灯按钮要按新站点重新计算
+    return {
+      ok: true, newRoute: team.route, station: newStation, visitKey,
+      canTrade: newStation.type === 'site' || newStation.type === 'final',
+      lampCost: (newStation.type === 'way' || newStation.type === 'site') ? lampCostFor(newStation) : null,
+    };
+  },
+
+  allCompleted(state) {
+    return state.teams.every(t => t.completed);
   },
 
   isAutoTurn(state) {
@@ -434,6 +463,7 @@ DR.Game = {
     state.phase = 'awaiting_roll';
     state.turnPhase = 'roll';
     state.lastRoll = null;
+    state.swapUsed = false;
     if (state.activeIndex === 0) {
       this.recordHistory(state, state.round);
       state.round++;

@@ -645,7 +645,7 @@ function renderHonors() {
     <div class="hs-card"><b>${answers}</b><span>道智慧问答被答对</span></div>
     <div class="hs-card"><b>${lamps}</b><span>盏法灯被点亮</span></div>`;
   const medal = ['🥇', '🥈', '🥉'];
-  const reasonText = { timeup: '时间到', bankEmpty: '功德库耗尽', manual: '老师结束' };
+  const reasonText = { timeup: '时间到', bankEmpty: '功德库耗尽', manual: '老师结束', allHome: '全员圆满' };
   $('honors-list').innerHTML = list.map(g => `
     <article class="honor-card">
       <header><span class="hc-date">📅 ${fmtDate(g.date)}</span><span class="hc-meta">⏳ ${g.minutes} 分钟 · ${g.rounds} 轮 · ${reasonText[g.reason] || ''}</span></header>

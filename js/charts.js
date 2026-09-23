@@ -296,7 +296,7 @@ let endContext = null;
 
 function renderEnd(state, results, reason) {
   endContext = { state, results, reason };
-  const reasonText = { timeup: '⏰ 时间到', bankEmpty: '🏦 功德库已用完', manual: '🏁 老师结束了本局' }[reason] || '';
+  const reasonText = { timeup: '⏰ 时间到', bankEmpty: '🏦 功德库已用完', manual: '🏁 老师结束了本局', allHome: '🌸 所有队伍都已功德圆满' }[reason] || '';
   const used = Math.max(1, Math.round((state.totalSeconds - Math.max(0, state.timerSeconds)) / 60));
   $('end-sub').textContent = `${reasonText} · 共进行 ${state.round} 轮 · 用时约 ${used} 分钟 · 答对 ${state.qlog.filter(q => q.correct).length} 道智慧问答`;
 

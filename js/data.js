@@ -9,7 +9,7 @@ DR.CONFIG = {
   startMerit: 10,
   bankTotal: 260,
   backpackCapacityBase: 4,
-  backpackCapacityUpgraded: 6,
+  backpackCapacityUpgraded: 6, // 行囊扩充后的容量(高昌 / 真腊的剧情、"行囊"机缘卡、抵达那烂陀寺都会扩充)
   fullSetBonus: 10,      // 集齐六度额外奖励
   firstArrivalBonus: 3,  // 首次抵达新站点奖励
   roundTripBonus: 15,    // 完成往返奖励
@@ -96,8 +96,8 @@ DR.LAND_PATH = [
     blurb: '西域古国,国王麹文泰曾倾力资助玄奘西行求法。',
     story: {
       title: '高昌王的情谊',
-      text: '高昌国王麹文泰十分敬重你,与你结为兄弟,赠予丰厚盘缠,还派士兵护送一程。',
-      effect: { merit: 5 },
+      text: '高昌国王麹文泰十分敬重你,与你结为兄弟,赠予丰厚盘缠和一只结实的经箧,还派士兵护送一程。',
+      effect: { merit: 5, backpackBonus: 2 },
     } },
   { name: '火焰山驿站', type: 'way', icon: '🌋', x: 485, y: 120,
     blurb: '干燥炎热的红色山脉,后来成为《西游记》中的著名场景。' },
@@ -125,8 +125,8 @@ DR.LAND_PATH = [
     blurb: '古代世界最大的佛教学府,玄奘曾在此拜戒贤法师为师,潜心求学多年。',
     story: {
       title: '灵鹫山下,豁然开朗',
-      text: '你终于抵达那烂陀寺,聆听高僧讲法,只觉心中豁然开朗!',
-      effect: { merit: 6, fragment: 'random' },
+      text: '你终于抵达那烂陀寺,聆听高僧讲法,只觉心中豁然开朗!寺里的法师还送你一只大经箧,好把六度经卷都带回长安。',
+      effect: { merit: 6, backpackBonus: 2, fragment: 'random' },
     } },
 ];
 
@@ -143,8 +143,8 @@ DR.SEA_PATH = [
     blurb: '中南半岛上的古老王国,以精湛的建筑技艺闻名。',
     story: {
       title: '匠心营造',
-      text: '商船在真腊靠岸补给,当地工匠精湛的建筑技艺让商队赞叹不已,大家都学到了专注做事的道理。',
-      effect: { merit: 4 },
+      text: '商船在真腊靠岸补给,当地工匠为你打造了一只防水的经箧;精湛的手艺让商队赞叹不已,大家都学到了专注做事的道理。',
+      effect: { merit: 4, backpackBonus: 2 },
     } },
   { name: '南海季风道', type: 'way', icon: '🌊', x: 598, y: 410,
     blurb: '商船依靠季风航行:冬季南下,夏季北返。' },
@@ -171,8 +171,8 @@ DR.SEA_PATH = [
     blurb: '古代世界最大的佛教学府,玄奘曾在此拜戒贤法师为师,潜心求学多年。',
     story: {
       title: '灵鹫山下,豁然开朗',
-      text: '你终于抵达那烂陀寺,聆听高僧讲法,只觉心中豁然开朗!',
-      effect: { merit: 6, fragment: 'random' },
+      text: '你终于抵达那烂陀寺,聆听高僧讲法,只觉心中豁然开朗!寺里的法师还送你一只大经箧,好把六度经卷都带回长安。',
+      effect: { merit: 6, backpackBonus: 2, fragment: 'random' },
     } },
 ];
 
@@ -201,6 +201,7 @@ DR.LAND_EVENTS = [
   { title: '互赠干粮', text: '与同行的驼队分享干粮和故事,结下了一段善缘。', effect: { fragment: 'random' } },
   { title: '烈日难行', text: '正午烈日炎炎,商队只好找阴凉处暂避,耽误了一些行程。', effect: { skipNext: true },
     positive: '懂得适时休息,也是对自己身体的慈悲。' },
+  { title: '驼队赠行囊', text: '同行的驼队送你一只结实的皮囊,可以多装几卷经书了。', effect: { backpackBonus: 2 } },
   { title: '古庙题壁', text: '你在半路古庙的墙壁上,留下了自己的心愿与祝福。', effect: { merit: 2 } },
 ];
 
@@ -224,6 +225,7 @@ DR.SEA_EVENTS = [
   { title: '港口善缘', text: '靠岸休整时,当地寺院僧众热情款待。', effect: { fragment: 'random' } },
   { title: '南风送行', text: '恰逢难得的顺风时节,船队航程格外顺利。', effect: { merit: 3 } },
   { title: '异域译语', text: '与当地的翻译交流各国语言的趣事,收获了一页译经心得。', effect: { fragment: 'random' } },
+  { title: '藤编经箧', text: '港口的工匠送你一只防潮的藤编经箧,可以多装几卷经书了。', effect: { backpackBonus: 2 } },
   { title: '船舱漏水', text: '船舱不慎渗入海水,货物受潮损失了一些。', effect: { merit: -2 },
     positive: '及时补救、化险为夷,这也是一种"精进"。' },
 ];

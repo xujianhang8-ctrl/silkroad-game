@@ -290,7 +290,12 @@ function modalOpen() { return !$('modal-overlay').classList.contains('hidden'); 
 // Esc 只能关闭"查看类"弹窗(队伍详情、结缘、结束确认),抽卡/问答/挑战必须通过按钮完成
 function closeModalByEsc() {
   if (!modalOpen()) return false;
-  if (modalMode === 'teamDetail' || modalMode === 'trade' || modalMode === 'confirmEnd') { hideModal(); return true; }
+  if (modalMode === 'teamDetail' || modalMode === 'trade' || modalMode === 'confirmEnd') {
+    const wasTrade = modalMode === 'trade';
+    hideModal();
+    if (wasTrade) refreshMarketActions();
+    return true;
+  }
   return false;
 }
 
@@ -307,7 +312,7 @@ function renderModal() {
 function lampBonusLine(result) {
   if (!result || !result.lampBonus) return '';
   const lb = result.lampBonus;
-  return `<p class="modal-positive-note">🪔 路过 ${lb.ownerTeam.icon}${escapeHtml(lb.ownerTeam.name)} 点亮的法灯,双方随喜获得功德!</p>`;
+  return `<p class="modal-positive-note">🪔 落脚在 ${lb.ownerTeam.icon}${escapeHtml(lb.ownerTeam.name)} 点亮的法灯,双方随喜获得功德!</p>`;
 }
 
 function teamTag(team) {
@@ -322,6 +327,10 @@ function renderCardModal() {
   if (merit !== null && merit !== 0) effectHtml += `<div class="modal-effect-line ${merit < 0 ? 'neg' : ''}">功德 ${merit > 0 ? '+' : ''}${merit}</div>`;
   if (data.effect && data.effect.fragment) effectHtml += `<div class="modal-effect-line">获得一张随机残页 🎴</div>`;
   if (data.effect && data.effect.skipNext) effectHtml += `<div class="modal-effect-line neg">下回合暂停一次 ⏸</div>`;
+  if (data.effect && data.effect.backpackBonus) {
+    const t = data.team;
+    effectHtml += `<div class="modal-effect-line">🎒 行囊扩充${t ? `:现在可装 ${t.backpackCap} 张残页` : ''}</div>`;
+  }
   const kind = data.kind === 'story' ? '⭐ 剧情' : (merit !== null && merit < 0) || (data.effect && data.effect.skipNext) ? '🌧️ 小考验' : '🌤️ 善缘';
   box.innerHTML = `
     <div class="card-kicker">${kind}${data.stationName ? ' · ' + escapeHtml(data.stationName) : ''}${data.team ? teamTag(data.team) : ''}</div>
@@ -510,13 +519,16 @@ function renderTradeModal() {
     <p class="tc-sub">你的功德:${team.merit} · 行囊 ${DR.Game.backpackTotal(team)}/${team.backpackCap}${full ? '(已满)' : ''}</p>`;
   } else if (tradeTab === 'swap') {
     const held = DR.PARAMITAS.filter(p => team.backpack[p.key] > 0);
-    inner = `<p class="tc-sub">先选择你要交出的残页,再选择想要换取的残页(1 换 1,不分价值):</p>
+    if (DR.state.swapUsed) {
+      inner = `<p class="tc-sub">🤝 本回合已经以法结缘过一次了,下次来到圣地再换吧。</p>`;
+    } else
+    inner = `<p class="tc-sub">先选择你要交出的残页,再选择想要换取的残页(1 换 1,不分价值;每回合限换一次):</p>
       <div class="frag-grid">${held.length ? held.map(p => `<button class="frag-btn swap-give-btn ${swapGive === p.key ? 'selected' : ''}" data-key="${p.key}" style="--pc:${p.color}">
         <span class="fb-icon">${p.icon}</span>${p.name} ×${team.backpack[p.key]}</button>`).join('') : '<p>你的行囊里还没有残页。</p>'}</div>
       <p class="tc-sub">换取(该地可结缘的残页):</p>
       <div class="frag-grid">${station.offers.map(key => {
         const def = DR.PARAMITAS.find(p => p.key === key);
-        return `<button class="frag-btn swap-take-btn" data-key="${key}" style="--pc:${def.color}" ${!swapGive ? 'disabled' : ''}><span class="fb-icon">${def.icon}</span>${def.name}</button>`;
+        return `<button class="frag-btn swap-take-btn" data-key="${key}" style="--pc:${def.color}" ${!swapGive || swapGive === key ? 'disabled' : ''}><span class="fb-icon">${def.icon}</span>${def.name}</button>`;
       }).join('')}</div>`;
   } else if (tradeTab === 'sell') {
     const held = DR.PARAMITAS.filter(p => team.backpack[p.key] > 0);
@@ -578,7 +590,7 @@ function renderTradeModal() {
       }
     });
   }
-  $('btn-close-trade').addEventListener('click', hideModal);
+  $('btn-close-trade').addEventListener('click', () => { hideModal(); refreshMarketActions(); });
 }
 
 // ---------------- 规则手册(菜单式说明页) ----------------
@@ -603,9 +615,13 @@ function renderRulesDynamicContent() {
     lampList.innerHTML = `
       <li>在<b>普通驿站</b>点灯花费 <b>${DR.CONFIG.lampCostWay}</b> 功德,在<b>圣地</b>点灯花费 <b>${DR.CONFIG.lampCostSite}</b> 功德(人气更旺、更贵)。</li>
       <li>每队最多能点亮 <b>${DR.CONFIG.lampMaxPerTeam}</b> 盏法灯,一个站点先到先得,点亮后地图上会显示你队伍颜色的 🪔。</li>
-      <li>之后别的队伍路过你点亮的法灯,你会获得 <b>${DR.CONFIG.lampPassBonusOwner}</b> 点随喜功德,路过的队伍自己也会获得 <b>${DR.CONFIG.lampPassBonusVisitor}</b> 点——双方都开心,不会互相扣分。</li>
+      <li>之后别的队伍停在(落脚于)你点亮法灯的站点,你会获得 <b>${DR.CONFIG.lampPassBonusOwner}</b> 点随喜功德,落脚的队伍自己也会获得 <b>${DR.CONFIG.lampPassBonusVisitor}</b> 点——双方都开心,不会互相扣分。</li>
     `;
   }
+  const bagBase = $('rules-bag-base');
+  if (bagBase) bagBase.textContent = DR.CONFIG.backpackCapacityBase;
+  const bagMax = $('rules-bag-max');
+  if (bagMax) bagMax.textContent = DR.CONFIG.backpackCapacityUpgraded;
   const reward = $('rules-challenge-reward');
   if (reward) reward.textContent = DR.CONFIG.challengeReward;
 }
@@ -668,6 +684,7 @@ function beginTurn(opts) {
   const state = DR.state;
   if (state.phase === 'ended') return;
   hideModal();
+  marketResult = null;
   $('btn-next-team').classList.add('hidden');
   $('action-area').innerHTML = '';
   setDieFace(1);
@@ -689,6 +706,20 @@ function beginTurn(opts) {
       const newRound = DR.Game.nextTeam(state);
       beginTurn({ newRound });
     }, 1100);
+    return;
+  }
+
+  // 被"暂停一次"的队伍:不用掷骰,直接原地休整,点"下一队"继续
+  if (team.skipNext) {
+    DR.Game.resolveSkip(state);
+    state.turnPhase = 'end';
+    $('btn-roll').disabled = true;
+    $('active-team-banner').innerHTML = `<span class="team-chip" style="--team-color:${team.color}">${team.icon} ${escapeHtml(team.name)}</span> 本回合原地休整 ⏸`;
+    renderAll();
+    showTurnSplash(team, opts.newRound || opts.first, '⏸ 本回合原地休整,下回合继续出发');
+    DR.Audio.trial();
+    showActionArea([]);
+    showNextOnly();
     return;
   }
 
@@ -776,21 +807,33 @@ async function onRolled() {
   }
 }
 
+let marketResult = null;
+
 function afterLandingModalClosed(result) {
   const state = DR.state;
   if (!state || state.phase === 'ended') return;
   if (DR.Game.bankEmpty(state)) { DR.UI.finishGame('bankEmpty'); return; }
-  const team = DR.Game.activeTeam(state);
   state.turnPhase = 'market';
+  marketResult = result;
   renderPhaseTracker(state);
   renderTeamsPanel(state);
   renderBank(state);
   renderJourneyLog(state);
+  refreshMarketActions();
+  showNextOnly();
+}
+
+// 集市按钮每次都按"当前"情况计算:结缘后功德变了、换乘到了新站点,点灯按钮都会跟着更新
+function refreshMarketActions() {
+  const state = DR.state;
+  const result = marketResult;
+  if (!state || !result || state.phase === 'ended' || state.turnPhase !== 'market') return;
+  const team = DR.Game.activeTeam(state);
   const actions = [];
   if (result.canTrade) {
     actions.push({ label: '🛕 前往结缘', fn: () => showModal('trade', { station: result.station }) });
   }
-  if (result.canLightLamp) {
+  if (DR.Game.canLightLamp(state, team, result.station, result.visitKey)) {
     actions.push({
       label: `🪔 点亮法灯(花费 ${result.lampCost} 功德)`,
       fn: () => {
@@ -800,26 +843,25 @@ function afterLandingModalClosed(result) {
         DR.Map.markLamp(team.route, team.position, team);
         toast(`🪔 ${team.icon}${escapeHtml(team.name)} 在${escapeHtml(result.station.name)}点亮了法灯`, 'good');
         renderAll();
-        afterLandingModalClosed({ ...result, canLightLamp: false });
+        refreshMarketActions();
       },
     });
   }
-  if (result.canCrossover) {
+  if (result.canCrossover && !team.hasSwitched) {
     actions.push({
       label: '⇄ 换乘驿站', fn: () => {
         const res = DR.Game.attemptCrossover(state);
         DR.Audio.click();
         renderAll();
-        $('action-area').innerHTML = '';
         if (res.ok) {
-          const st = DR.Game.currentStation(state, team);
-          toast(`⇄ ${team.icon}${escapeHtml(team.name)} 改走${res.newRoute === 'land' ? '陆路' : '海路'},来到${escapeHtml(st.name)}`, 'info');
+          toast(`⇄ ${team.icon}${escapeHtml(team.name)} 改走${res.newRoute === 'land' ? '陆路' : '海路'},来到${escapeHtml(res.station.name)}`, 'info');
+          marketResult = { ...result, station: res.station, visitKey: res.visitKey, canTrade: res.canTrade, lampCost: res.lampCost, canCrossover: false };
         }
+        refreshMarketActions();
       },
     });
   }
   showActionArea(actions);
-  showNextOnly();
 }
 
 let turnEndTransitioning = false;
@@ -827,6 +869,7 @@ async function onNextTeamClick() {
   const state = DR.state;
   if (turnEndTransitioning || !state || state.phase === 'ended') return;
   if (DR.Game.bankEmpty(state)) { DR.UI.finishGame('bankEmpty'); return; }
+  if (DR.Game.allCompleted(state)) { DR.UI.finishGame('allHome'); return; }
   turnEndTransitioning = true;
   $('btn-next-team').disabled = true;
   state.turnPhase = 'end';
