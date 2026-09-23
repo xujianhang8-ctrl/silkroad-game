@@ -100,6 +100,7 @@ var DR = window.DR || (window.DR = {});
     const state = DR.Game.init(teams, setup.timerMinutes, {
       questionChance: freq.chance,
       challenges: setup.challenges !== false,
+      journey: setup.journey || 'long',
     });
     state.soundOn = DR.Store.settings.soundOn;
     DR.Audio.fanfare();

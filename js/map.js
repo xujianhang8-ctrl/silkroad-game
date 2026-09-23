@@ -395,7 +395,8 @@ function startTravelers() {
 
 // ---------------- 站点坐标与图标 ----------------
 
-function pathOf(routeKey) { return routeKey === 'land' ? DR.LAND_PATH : DR.SEA_PATH; }
+// 本局的路线(城市 + 沿途村落)
+function pathOf(routeKey) { return DR.Game.path(routeKey); }
 
 function coordFor(routeKey, position) {
   if (position === 0) return DR.HOME_COORD;
@@ -439,8 +440,25 @@ function renderMarkers() {
   home.addEventListener('click', () => showStationTooltip(home, { name: '长安', type: 'home', blurb: '大唐的都城,商队与求法僧人从这里踏上丝绸之路的起点。' }));
   wrap.appendChild(home);
 
+  // 沿途村落:路线上的小圆点,放大地图或鼠标移上去时才显示村名(先画,压在城市标记下面)
   ['land', 'sea'].forEach(routeKey => {
     pathOf(routeKey).forEach((st, idx) => {
+      if (st.type !== 'village') return;
+      const el = document.createElement('div');
+      el.className = `village-marker ${routeKey}`;
+      el.style.left = pctX(st.x);
+      el.style.top = pctY(st.y);
+      el.dataset.route = routeKey;
+      el.dataset.pos = idx + 1;
+      el.innerHTML = `<span class="vm-dot"></span><span class="vm-label">${st.name}</span>`;
+      el.addEventListener('click', () => showStationTooltip(el, st));
+      wrap.appendChild(el);
+    });
+  });
+
+  ['land', 'sea'].forEach(routeKey => {
+    pathOf(routeKey).forEach((st, idx) => {
+      if (st.type === 'village') return;
       const pos = idx + 1;
       const el = document.createElement('div');
       const labelPos = st.label || (pos % 2 === 0 ? 'below' : 'above');
@@ -542,6 +560,7 @@ function showStationTooltip(markerEl, station) {
   }
   // 站点/名胜都能一键跳到"丝路百科"里对应的条目
   const more = tip.querySelector('.st-tip-more');
+  if (more) more.classList.toggle('hidden', station.type === 'village'); // 村落每局随机生成,百科里没有条目
   if (more) {
     more.dataset.tab = station.landmarkKey ? 'landmarks' : 'stations';
     more.dataset.key = station.landmarkKey || station.name;
@@ -564,7 +583,7 @@ function hideStationTooltip() {
 
 function wireTooltipDismiss() {
   document.addEventListener('click', e => {
-    if (e.target.closest('.station-marker, .landmark-marker, #station-tooltip')) return;
+    if (e.target.closest('.station-marker, .village-marker, .landmark-marker, #station-tooltip')) return;
     hideStationTooltip();
   });
   const tip = $('station-tooltip');
@@ -615,7 +634,7 @@ function updateVisitedMarks(state) {
       if (!el) return;
       // 陆路、海路的终点(那烂陀寺)是同一个地点,两个标记重叠在一起,到访记录要合并显示。
       const visitors = st.type === 'final'
-        ? state.teams.filter(t => t.visited.has('land:' + DR.LAND_PATH.length) || t.visited.has('sea:' + DR.SEA_PATH.length))
+        ? state.teams.filter(t => t.visited.has('land:' + pathOf('land').length) || t.visited.has('sea:' + pathOf('sea').length))
         : state.teams.filter(t => t.visited.has(key));
       let dots = el.querySelector('.visited-dots');
       if (!visitors.length) { if (dots) dots.remove(); return; }

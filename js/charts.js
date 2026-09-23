@@ -244,8 +244,7 @@ function renderClassStats(container, state) {
   const lamps = state.teams.reduce((s, t) => s + t.lampsLit, 0);
   const trips = state.teams.filter(t => t.completed).length;
   const used = state.totalSeconds - Math.max(0, state.timerSeconds);
-  const bankPct = Math.max(0, Math.min(100, state.bank / DR.CONFIG.bankTotal * 100));
-  const half = Math.round(DR.LAND_PATH.length);
+  const bankPct = Math.max(0, Math.min(100, state.bank / (state.bankStart || DR.CONFIG.bankTotal) * 100));
   container.innerHTML = `
     <div class="kpi-row">
       <div class="kpi"><span>轮次</span><b>${state.round}</b></div>
@@ -256,7 +255,7 @@ function renderClassStats(container, state) {
       <div class="kpi"><span>已用时间</span><b>${fmtClock(used)}</b></div>
     </div>
     <div class="meter-block">
-      <div class="meter-label"><span>🏦 功德库剩余</span><b>${state.bank} / ${DR.CONFIG.bankTotal}</b></div>
+      <div class="meter-label"><span>🏦 功德库剩余</span><b>${state.bank} / ${state.bankStart || DR.CONFIG.bankTotal}</b></div>
       <div class="meter"><div class="meter-fill" style="width:${bankPct.toFixed(1)}%"></div></div>
     </div>
     <div class="race">
@@ -268,7 +267,7 @@ function renderClassStats(container, state) {
           <span class="race-token" style="left:${pct}%;border-color:${t.color}">${t.icon}</span></span>
           <span class="race-pct">${pct}%</span></div>`;
       }).join('')}
-      <p class="race-note">进度 = 去程占一半、归程占一半(陆路 ${half} 站 / 海路 ${DR.SEA_PATH.length} 站)</p>
+      <p class="race-note">进度 = 去程占一半、归程占一半(陆路 ${DR.Game.path('land').length} 步 / 海路 ${DR.Game.path('sea').length} 步,含沿途村落)</p>
     </div>`;
 }
 

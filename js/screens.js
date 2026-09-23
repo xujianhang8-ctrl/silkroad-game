@@ -198,6 +198,7 @@ function ensureSetup() {
     timerMinutes: DR.CONFIG.defaultTimerMinutes,
     questionFreq: 'normal',
     challenges: true,
+    journey: 'long',
   };
 }
 
@@ -328,6 +329,13 @@ function wireSetup() {
     DR.Audio.click();
     renderOptionChoices();
   });
+  $('journey-choices').addEventListener('click', e => {
+    const card = e.target.closest('[data-journey]');
+    if (!card) return;
+    DR.setup.journey = card.dataset.journey;
+    DR.Audio.click();
+    renderOptionChoices();
+  });
   $('qfreq-choices').addEventListener('click', e => {
     const card = e.target.closest('[data-freq]');
     if (!card) return;
@@ -364,6 +372,13 @@ function renderOptionChoices() {
     <button type="button" class="choice-card ${DR.setup.timerMinutes === c.m ? 'on' : ''}" data-minutes="${c.m}">
       <b>${c.m}<small> 分钟</small></b><span>${c.label}</span><em>${c.sub}</em>
     </button>`).join('');
+  const journey = DR.setup.journey || 'long';
+  $('journey-choices').innerHTML = DR.JOURNEY_LENGTHS.map(j => {
+    const steps = r => { const n = (r === 'land' ? DR.LAND_PATH : DR.SEA_PATH).length; return Math.round(n + n * (j.min + j.max) / 2); };
+    return `<button type="button" class="choice-card ${journey === j.key ? 'on' : ''}" data-journey="${j.key}">
+      <b>${j.label}</b><span>${j.sub}</span><em>陆路约 ${steps('land')} 步 · 海路约 ${steps('sea')} 步</em>
+    </button>`;
+  }).join('');
   $('qfreq-choices').innerHTML = DR.QUESTION_FREQ.map(f => `
     <button type="button" class="choice-card ${DR.setup.questionFreq === f.key ? 'on' : ''}" data-freq="${f.key}">
       <b>${f.label}</b><span>约 ${Math.round(f.chance * 100)}% 的落地</span>
@@ -386,6 +401,7 @@ function renderSetupSummary() {
       <p class="sum-desc">广州 → 南海诸国 → 马六甲 → 狮子国 → 天竺 · 共 ${DR.SEA_PATH.length} 站</p></div>
     <div class="sum-options">
       <span>⏳ ${DR.setup.timerMinutes} 分钟</span>
+      <span>🏘️ ${(DR.JOURNEY_LENGTHS.find(j => j.key === (DR.setup.journey || 'long')) || DR.JOURNEY_LENGTHS[0]).label}(${(DR.JOURNEY_LENGTHS.find(j => j.key === (DR.setup.journey || 'long')) || DR.JOURNEY_LENGTHS[0]).sub})</span>
       <span>💡 问答${freq.label}</span>
       <span>🎯 课堂挑战${DR.setup.challenges !== false ? '开' : '关'}</span>
       <span>${DR.Store.settings.soundOn ? '🔊 音效开' : '🔇 音效关'}</span>

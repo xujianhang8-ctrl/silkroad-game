@@ -84,7 +84,7 @@ function renderTeamsPanel(state) {
     let posLabel;
     if (team.completed) posLabel = '已回长安';
     else if (team.position === 0) posLabel = '长安(出发前)';
-    else posLabel = (team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH)[team.position - 1].name;
+    else posLabel = DR.Game.path(team.route)[team.position - 1].name;
     const rank = rankOf.get(team.id);
     const rankBadge = medal[rank] || `#${rank + 1}`;
     return `<div class="team-card ${i === state.activeIndex ? 'active' : ''}" data-team-id="${team.id}" style="border-left-color:${team.color}">
@@ -367,7 +367,7 @@ function renderTeamDetailModal() {
   const box = $('modal-box');
   if (!team) { hideModal(); return; }
 
-  const path = team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+  const path = DR.Game.path(team.route);
   let posLabel;
   if (team.completed) posLabel = '已回长安 · 功德圆满';
   else if (team.position === 0) posLabel = '长安(出发前)';
@@ -790,6 +790,16 @@ async function onRolled() {
   renderPhaseTracker(state);
   pendingPostModal = result;
   if (result.firstTime) DR.Map.updateVisitedMarks(state);
+
+  // 沿途村落:只是歇脚,不抽卡、不答题,直接可以轮到下一队
+  if (result.type === 'village') {
+    toast(`🏡 ${result.team.icon}${escapeHtml(result.team.name)} 在${escapeHtml(result.station.name)}歇脚`, 'info');
+    state.turnPhase = 'end';
+    renderAll();
+    showActionArea([]);
+    showNextOnly();
+    return;
+  }
 
   if (result.type === 'story') {
     DR.Audio.good();

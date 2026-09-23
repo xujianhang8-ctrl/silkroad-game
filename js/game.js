@@ -1,10 +1,68 @@
 /* 丝路法灯 · 游戏逻辑(状态与规则,不含 DOM 操作) */
 var DR = window.DR || (window.DR = {});
 
-DR.CONFIG.landCrossoverPos = DR.LAND_PATH.findIndex(s => s.crossover) + 1; // 1-based position
-DR.CONFIG.seaCrossoverPos = DR.SEA_PATH.findIndex(s => s.crossover) + 1;
-
 (function () {
+
+// 可复现的随机数:同一个种子总是生成同样的村落,存档只需要记住种子
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// 生成本局棋盘:在长安与第一座城之间、以及每两座城之间,随机插入若干个小村落。
+// 村落正好落在两城之间的路线上,因此地图上的路线不用改动。
+function buildBoard(lengthKey, seed) {
+  const len = DR.JOURNEY_LENGTHS.find(j => j.key === lengthKey) || DR.JOURNEY_LENGTHS[0];
+  const rand = mulberry32(seed || 1);
+  const board = {};
+  ['land', 'sea'].forEach(route => {
+    const cities = route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+    const parts = DR.VILLAGE_NAME_PARTS[route];
+    const names = [];
+    parts.prefix.forEach(pf => parts.suffix.forEach(sf => names.push(pf + sf)));
+    for (let i = names.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [names[i], names[j]] = [names[j], names[i]];
+    }
+    const out = [];
+    let prev = DR.HOME_COORD;
+    cities.forEach(city => {
+      const k = len.max ? len.min + Math.floor(rand() * (len.max - len.min + 1)) : 0;
+      for (let v = 1; v <= k; v++) {
+        const t = v / (k + 1);
+        out.push({
+          name: names.pop() || '无名村', type: 'village', route,
+          x: Math.round((prev.x + (city.x - prev.x) * t) * 10) / 10,
+          y: Math.round((prev.y + (city.y - prev.y) * t) * 10) / 10,
+          blurb: parts.blurb,
+        });
+      }
+      out.push(city);
+      prev = city;
+    });
+    board[route] = out;
+  });
+  return board;
+}
+
+function useBoard(state) {
+  const j = state.journey || { length: 'short', seed: 1 };
+  DR.BOARD = buildBoard(j.length, j.seed);
+}
+
+function pathFor(route) {
+  const b = DR.BOARD;
+  if (b && b[route]) return b[route];
+  return route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+}
+
+function crossoverPos(route) {
+  return pathFor(route).findIndex(s => s.crossover) + 1; // 1-based position
+}
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -75,7 +133,11 @@ DR.Game = {
     { key: 'end', label: '回合结束', icon: '➜' },
   ],
 
-  // options:{ questionChance, challenges }(来自设置向导)
+  // 当前这一局的路线(城市 + 沿途村落);地图、棋子、进度条都用它
+  path(route) { return pathFor(route); },
+  buildBoard,
+
+  // options:{ questionChance, challenges, journey }(来自设置向导)
   init(setupTeams, timerMinutes, options) {
     const opts = Object.assign({
       questionChance: DR.CONFIG.questionChance,
@@ -105,7 +167,9 @@ DR.Game = {
       })),
       activeIndex: 0,
       round: 1,
-      bank: DR.CONFIG.bankTotal,
+      // 功德库按游戏时长配置:时间越长,库越大(不少于 bankTotal)
+      bank: Math.max(DR.CONFIG.bankTotal, Math.round(DR.CONFIG.bankPerMinute * timerMinutes)),
+      bankStart: Math.max(DR.CONFIG.bankTotal, Math.round(DR.CONFIG.bankPerMinute * timerMinutes)),
       timerSeconds: timerMinutes * 60,
       totalSeconds: timerMinutes * 60,
       timerRunning: false,
@@ -120,12 +184,14 @@ DR.Game = {
       questionDeck: makeDeck(DR.QUESTIONS),
       challengeDeck: makeDeck(DR.CHALLENGES),
       options: opts,
+      journey: { length: opts.journey || 'short', seed: 1 + Math.floor(Math.random() * 2147483000) },
       history: [],            // 每轮结束时各队的总功德,用于"战况看板"与结算页的走势图
       qlog: [],               // 本局出现过的智慧问答及作答情况
       log: [],
       startedAt: Date.now(),
       soundOn: DR.CONFIG.soundDefault,
     };
+    useBoard(state);
     this.recordHistory(state, 0);
     this.log(state, `§ 第 1 轮`);
     return state;
@@ -138,8 +204,7 @@ DR.Game = {
   currentStation(state, team) {
     team = team || this.activeTeam(state);
     if (team.position === 0) return null;
-    const path = team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
-    return path[team.position - 1];
+    return pathFor(team.route)[team.position - 1];
   },
 
   setTurnPhase(state, key) {
@@ -242,7 +307,7 @@ DR.Game = {
       return { skipped: true, team };
     }
 
-    const path = team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+    const path = pathFor(team.route);
     const dice = state.lastRoll;
 
     if (team.direction === 'out') {
@@ -266,6 +331,12 @@ DR.Game = {
     }
 
     const result = { team, station, visitKey, firstTime, canTrade: station.type === 'site' || station.type === 'final' };
+
+    // 沿途小村落只是歇脚点:不抽卡、不答题、没有开路功德,直接轮到下一队
+    if (station.type === 'village') {
+      this.log(state, `${team.icon}${team.name} 在${station.name}歇脚。`);
+      return { team, station, visitKey, firstTime, type: 'village', canTrade: false, canCrossover: false, lampCost: null, canLightLamp: false };
+    }
 
     if (firstTime && team.position !== path.length) {
       // 终点站的奖励已包含在剧情卡中,避免重复给
@@ -429,7 +500,7 @@ DR.Game = {
     const station = this.currentStation(state, team);
     if (!station || !station.crossover || team.hasSwitched || team.direction !== 'out') return { ok: false };
     team.route = team.route === 'land' ? 'sea' : 'land';
-    team.position = team.route === 'land' ? DR.CONFIG.landCrossoverPos : DR.CONFIG.seaCrossoverPos;
+    team.position = crossoverPos(team.route);
     team.hasSwitched = true;
     const visitKey = team.route + ':' + team.position;
     team.visited.add(visitKey);
@@ -496,7 +567,7 @@ DR.Game = {
 
   journeyProgressPct(team) {
     if (team.completed) return 100;
-    const path = team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+    const path = pathFor(team.route);
     const frac = path.length ? team.position / path.length : 0;
     return Math.round(team.direction === 'back' ? 50 + (1 - frac) * 50 : frac * 50);
   },
@@ -561,6 +632,7 @@ DR.Game = {
       activeIndex: state.activeIndex,
       round: state.round,
       bank: state.bank,
+      bankStart: state.bankStart,
       timerSeconds: state.timerSeconds,
       totalSeconds: state.totalSeconds,
       sprintActive: state.sprintActive,
@@ -572,6 +644,7 @@ DR.Game = {
         challenge: deckToJSON(state.challengeDeck),
       },
       options: state.options,
+      journey: state.journey,
       history: state.history,
       qlog: state.qlog,
       log: state.log,
@@ -592,6 +665,7 @@ DR.Game = {
       activeIndex: Math.min(data.activeIndex || 0, data.teams.length - 1),
       round: data.round || 1,
       bank: data.bank,
+      bankStart: data.bankStart || DR.CONFIG.bankTotal,
       timerSeconds: data.timerSeconds,
       totalSeconds: data.totalSeconds || data.timerSeconds,
       timerRunning: false,
@@ -607,12 +681,15 @@ DR.Game = {
       questionDeck: deckFromJSON(data.decks && data.decks.question, DR.QUESTIONS),
       challengeDeck: deckFromJSON(data.decks && data.decks.challenge, DR.CHALLENGES),
       options: data.options || {},
+      // 旧存档没有村落:按"短途"还原,棋子位置才对得上
+      journey: data.journey || { length: 'short', seed: 1 },
       history: data.history || [],
       qlog: data.qlog || [],
       log: data.log || [],
       startedAt: data.startedAt || Date.now(),
       soundOn: true,
     };
+    useBoard(state);
     return state;
   },
 };
