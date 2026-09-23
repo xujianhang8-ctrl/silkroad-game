@@ -29,6 +29,18 @@ function drawFromDeck(deck) {
   return card;
 }
 
+// 存档时牌堆只记录卡牌在原数组里的下标;读档时如果数据文件被老师改过(下标失效),就重新洗一副新牌
+function deckToJSON(deck) {
+  const idx = c => deck.all.indexOf(c);
+  return { draw: deck.draw.map(idx), discard: deck.discard.map(idx), size: deck.all.length };
+}
+function deckFromJSON(json, sourceArray) {
+  if (!json || json.size !== sourceArray.length) return makeDeck(sourceArray);
+  const ok = i => Number.isInteger(i) && i >= 0 && i < sourceArray.length;
+  if (!json.draw.every(ok) || !json.discard.every(ok)) return makeDeck(sourceArray);
+  return { all: sourceArray, draw: json.draw.map(i => sourceArray[i]), discard: json.discard.map(i => sourceArray[i]) };
+}
+
 function emptyBackpack() {
   const bp = {};
   DR.PARAMITAS.forEach(p => { bp[p.key] = 0; });
@@ -51,6 +63,8 @@ function lampCostFor(station) {
   return station.type === 'site' ? DR.CONFIG.lampCostSite : DR.CONFIG.lampCostWay;
 }
 
+const LOG_LIMIT = 400;
+
 DR.Game = {
   // 每回合分为四个阶段,界面顶部的进度条会随之高亮(类似大富翁的"掷骰-移动-事件-交易"流程):
   //   roll(掷骰前进) → landing(机缘/问答/剧情) → market(结缘市集:交易/点灯/换乘) → end(回合结束)
@@ -61,7 +75,13 @@ DR.Game = {
     { key: 'end', label: '回合结束', icon: '➜' },
   ],
 
-  init(setupTeams, timerMinutes) {
+  // options:{ questionChance, challenges }(来自设置向导)
+  init(setupTeams, timerMinutes, options) {
+    const opts = Object.assign({
+      questionChance: DR.CONFIG.questionChance,
+      challenges: true,
+      challengeChance: DR.CONFIG.challengeChance,
+    }, options || {});
     const state = {
       teams: setupTeams.map((t, i) => ({
         id: i,
@@ -79,10 +99,12 @@ DR.Game = {
         completed: false,
         skipNext: false,
         correctAnswers: 0,
+        challengesDone: 0,
         turnsTaken: 0,
         lampsLit: 0,
       })),
       activeIndex: 0,
+      round: 1,
       bank: DR.CONFIG.bankTotal,
       timerSeconds: timerMinutes * 60,
       totalSeconds: timerMinutes * 60,
@@ -96,9 +118,16 @@ DR.Game = {
       landDeck: makeDeck(DR.LAND_EVENTS),
       seaDeck: makeDeck(DR.SEA_EVENTS),
       questionDeck: makeDeck(DR.QUESTIONS),
+      challengeDeck: makeDeck(DR.CHALLENGES),
+      options: opts,
+      history: [],            // 每轮结束时各队的总功德,用于"战况看板"与结算页的走势图
+      qlog: [],               // 本局出现过的智慧问答及作答情况
       log: [],
+      startedAt: Date.now(),
       soundOn: DR.CONFIG.soundDefault,
     };
+    this.recordHistory(state, 0);
+    this.log(state, `§ 第 1 轮`);
     return state;
   },
 
@@ -117,9 +146,17 @@ DR.Game = {
     state.turnPhase = key;
   },
 
+  // "§ " 开头的记录是分隔标记(例如"第 3 轮"),日志与旅程纪事里会显示成分隔条
   log(state, msg) {
     state.log.push(msg);
-    if (state.log.length > 60) state.log.shift();
+    if (state.log.length > LOG_LIMIT) state.log.shift();
+  },
+
+  recordHistory(state, roundNo) {
+    const scores = state.teams.map(t => this.totalScore(t));
+    const last = state.history[state.history.length - 1];
+    if (last && last.round === roundNo) { last.scores = scores; return; }
+    state.history.push({ round: roundNo, scores });
   },
 
   changeMerit(state, team, delta) {
@@ -234,6 +271,7 @@ DR.Game = {
       }
     }
 
+    const opts = state.options || {};
     if (station.type === 'story' || station.type === 'final') {
       result.type = 'story';
       result.story = station.story;
@@ -241,10 +279,18 @@ DR.Game = {
       if (station.type === 'final' && team.direction === 'out') {
         team.direction = 'back';
         result.turnedAround = true;
+        this.log(state, `🪷 ${team.icon}${team.name} 抵达那烂陀寺,开悟之后踏上归途!`);
       }
-    } else if (Math.random() < DR.CONFIG.questionChance) {
+    } else if (opts.challenges && DR.CHALLENGES && DR.CHALLENGES.length && Math.random() < (opts.challengeChance || 0)) {
+      result.type = 'challenge';
+      result.challenge = drawFromDeck(state.challengeDeck);
+      state.pendingChallenge = result.challenge;
+    } else if (Math.random() < (opts.questionChance != null ? opts.questionChance : DR.CONFIG.questionChance)) {
       result.type = 'question';
-      result.question = drawFromDeck(state.questionDeck);
+      // 每次出题都打乱选项顺序,避免正确答案总在同一个位置
+      const q = drawFromDeck(state.questionDeck);
+      const order = shuffle(q.options.map((_, i) => i));
+      result.question = { q: q.q, options: order.map(i => q.options[i]), answer: order.indexOf(q.answer), note: q.note, src: q };
       state.pendingQuestion = result.question;
     } else {
       result.type = 'event';
@@ -278,8 +324,26 @@ DR.Game = {
       state.teams.forEach(t => this.changeMerit(state, t, 1));
       this.log(state, `📖 答案揭晓,全班每队获得 1 点随喜功德,继续加油!`);
     }
+    state.qlog.push({ q: DR.QUESTIONS.indexOf(q.src || q), teamId: team.id, chosenText: q.options[chosenIndex], correct, round: state.round });
     state.pendingQuestion = null;
     return { correct, note: q.note, answerIndex: q.answer };
+  },
+
+  // 课堂挑战:由老师判断是否完成。完成可得功德与对应的六度残页
+  resolveChallenge(state, success) {
+    const team = this.activeTeam(state);
+    const ch = state.pendingChallenge;
+    state.pendingChallenge = null;
+    if (!ch) return { ok: false };
+    if (!success) {
+      this.log(state, `🎯 ${team.icon}${team.name} 这次跳过了"${ch.title}"挑战,下次再试!`);
+      return { ok: true, success: false };
+    }
+    team.challengesDone++;
+    const gain = this.changeMerit(state, team, DR.CONFIG.challengeReward);
+    this.log(state, `🎯 ${team.icon}${team.name} 完成课堂挑战"${ch.title}",获得 ${gain} 点功德!`);
+    const frag = this.grantFragment(state, team, ch.paramita);
+    return { ok: true, success: true, gain, frag };
   },
 
   // ---- 结缘(交易)----
@@ -364,11 +428,19 @@ DR.Game = {
     this.log(state, `${team.icon}${team.name} 已功德圆满,在长安弘法讲经 +${gain}`);
   },
 
+  // 轮到下一队;返回 true 表示开始了新的一轮
   nextTeam(state) {
     state.activeIndex = (state.activeIndex + 1) % state.teams.length;
     state.phase = 'awaiting_roll';
     state.turnPhase = 'roll';
     state.lastRoll = null;
+    if (state.activeIndex === 0) {
+      this.recordHistory(state, state.round);
+      state.round++;
+      this.log(state, `§ 第 ${state.round} 轮`);
+      return true;
+    }
+    return false;
   },
 
   bankEmpty(state) {
@@ -392,6 +464,13 @@ DR.Game = {
       .map(o => o.stationName);
   },
 
+  journeyProgressPct(team) {
+    if (team.completed) return 100;
+    const path = team.route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+    const frac = path.length ? team.position / path.length : 0;
+    return Math.round(team.direction === 'back' ? 50 + (1 - frac) * 50 : frac * 50);
+  },
+
   computeResults(state) {
     const rows = state.teams.map(team => {
       const fragCount = backpackCount(team);
@@ -412,22 +491,99 @@ DR.Game = {
     let bestWisdomIdx = -1, bestWisdom = 0;
     let bestVigorIdx = -1, bestVigor = -1;
     let bestLampIdx = -1, bestLamp = 0;
+    let bestChallengeIdx = -1, bestChallenge = 0;
     rows.forEach((r, i) => {
       if (r.team.correctAnswers > bestWisdom) { bestWisdom = r.team.correctAnswers; bestWisdomIdx = i; }
       if (r.team.turnsTaken > bestVigor) { bestVigor = r.team.turnsTaken; bestVigorIdx = i; }
       if (r.team.lampsLit > bestLamp) { bestLamp = r.team.lampsLit; bestLampIdx = i; }
+      if ((r.team.challengesDone || 0) > bestChallenge) { bestChallenge = r.team.challengesDone; bestChallengeIdx = i; }
       if (r.team.completed) badges[i].push('🌸 圆满奖(完成往返)');
     });
     if (bestWisdomIdx >= 0 && bestWisdom > 0) badges[bestWisdomIdx].push('💡 智慧奖');
     if (bestVigorIdx >= 0 && bestVigor > 0) badges[bestVigorIdx].push('🔥 精进奖');
     if (bestLampIdx >= 0 && bestLamp > 0) badges[bestLampIdx].push('🪔 点灯奖');
+    if (bestChallengeIdx >= 0 && bestChallenge > 0) badges[bestChallengeIdx].push('🎯 互动之星');
     if (rows.length > 1) badges[rows.length - 1].push('🌿 毅力奖');
+
+    // 规则承诺"每队至少一项称号":还没有称号的队伍,按它最突出的表现补一个正向称号
+    rows.forEach((r, i) => {
+      if (badges[i].length) return;
+      const t = r.team;
+      if ((t.challengesDone || 0) > 0) badges[i].push('🎯 课堂之星');
+      else if (t.correctAnswers > 0) badges[i].push('💡 好学奖');
+      else if (t.lampsLit > 0) badges[i].push('🪔 护灯人');
+      else if (r.fragCount >= 3) badges[i].push('🎴 集卡达人');
+      else if (t.hasSwitched) badges[i].push('⇄ 换乘探险家');
+      else badges[i].push(t.route === 'sea' ? '⛵ 远航者' : '🐫 丝路行者');
+    });
 
     return rows.map((r, i) => ({ ...r, badges: badges[i] }));
   },
 
   backpackTotal(team) {
     return backpackCount(team);
+  },
+
+  // ---- 存档 / 读档(自动存档在每回合开始时进行) ----
+  serialize(state) {
+    return {
+      teams: state.teams.map(t => ({ ...t, visited: Array.from(t.visited), backpack: { ...t.backpack } })),
+      activeIndex: state.activeIndex,
+      round: state.round,
+      bank: state.bank,
+      timerSeconds: state.timerSeconds,
+      totalSeconds: state.totalSeconds,
+      sprintActive: state.sprintActive,
+      lampOwners: state.lampOwners,
+      decks: {
+        land: deckToJSON(state.landDeck),
+        sea: deckToJSON(state.seaDeck),
+        question: deckToJSON(state.questionDeck),
+        challenge: deckToJSON(state.challengeDeck),
+      },
+      options: state.options,
+      history: state.history,
+      qlog: state.qlog,
+      log: state.log,
+      startedAt: state.startedAt,
+    };
+  },
+
+  deserialize(data) {
+    if (!data || !Array.isArray(data.teams) || !data.teams.length) return null;
+    const state = {
+      teams: data.teams.map((t, i) => ({
+        ...t,
+        id: i,
+        visited: new Set(t.visited || []),
+        backpack: Object.assign(emptyBackpack(), t.backpack || {}),
+        challengesDone: t.challengesDone || 0,
+      })),
+      activeIndex: Math.min(data.activeIndex || 0, data.teams.length - 1),
+      round: data.round || 1,
+      bank: data.bank,
+      timerSeconds: data.timerSeconds,
+      totalSeconds: data.totalSeconds || data.timerSeconds,
+      timerRunning: false,
+      sprintActive: !!data.sprintActive,
+      phase: 'awaiting_roll',
+      turnPhase: 'roll',
+      lastRoll: null,
+      pendingQuestion: null,
+      pendingChallenge: null,
+      lampOwners: data.lampOwners || {},
+      landDeck: deckFromJSON(data.decks && data.decks.land, DR.LAND_EVENTS),
+      seaDeck: deckFromJSON(data.decks && data.decks.sea, DR.SEA_EVENTS),
+      questionDeck: deckFromJSON(data.decks && data.decks.question, DR.QUESTIONS),
+      challengeDeck: deckFromJSON(data.decks && data.decks.challenge, DR.CHALLENGES),
+      options: data.options || {},
+      history: data.history || [],
+      qlog: data.qlog || [],
+      log: data.log || [],
+      startedAt: data.startedAt || Date.now(),
+      soundOn: true,
+    };
+    return state;
   },
 };
 

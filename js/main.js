@@ -1,127 +1,204 @@
-/* 丝路法灯 · 启动与全局绑定(计时器、快捷键、屏幕切换) */
+/* 丝路法灯 · 启动与全局绑定(开局/读档、计时器、快捷键、屏幕切换) */
 var DR = window.DR || (window.DR = {});
 
 (function () {
   function $(id) { return document.getElementById(id); }
 
-  DR.setup = {
-    teams: DR.TEAM_PRESETS.slice(0, 5).map((p, i) => ({
-      name: p.name, icon: p.icon, color: p.color, route: i % 2 === 0 ? 'land' : 'sea',
-    })),
-    timerMinutes: DR.CONFIG.defaultTimerMinutes,
-    soundOn: DR.CONFIG.soundDefault,
-  };
-
   let timerHandle = null;
+  let lastTurnSnapshot = null;
+  let warned = {};
 
+  // ---------------- 计时器 ----------------
   function tick() {
     const state = DR.state;
-    if (!state || state.phase === 'ended') {
-      if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
-      return;
-    }
+    if (!state || state.phase === 'ended') return;
+    const frozen = DR.Screens.timerFrozen();
+    $('timer-chip').classList.toggle('frozen', frozen);
+    if (frozen) return;
     state.timerSeconds--;
+    const wasSprint = state.sprintActive;
     state.sprintActive = state.timerSeconds > 0 && state.timerSeconds <= DR.CONFIG.sprintMinutesLeft * 60;
     DR.UI.renderTimer(state);
     DR.UI.renderPhaseBanner(state);
+    if (!wasSprint && state.sprintActive && !warned.sprint) {
+      warned.sprint = true;
+      DR.UI.toast(`⚡ 最后 ${DR.CONFIG.sprintMinutesLeft} 分钟:冲刺阶段开始,掷骰点数 +1!`, 'warn');
+      DR.Audio.turn();
+    }
+    if (state.timerSeconds === 60 && !warned.oneMin) {
+      warned.oneMin = true;
+      DR.UI.toast('⏳ 还剩 1 分钟,准备收尾啦', 'warn');
+    }
     if (state.timerSeconds <= 0) {
       DR.UI.finishGame('timeup');
     }
   }
 
-  function startGame() {
-    const teams = DR.setup.teams.map((t, i) => ({
-      name: (t.name || '').trim() || DR.TEAM_PRESETS[i].name,
-      icon: t.icon,
-      color: t.color,
-      route: t.route,
-    }));
-    DR.state = DR.Game.init(teams, DR.setup.timerMinutes);
-    DR.state.soundOn = DR.setup.soundOn;
-    $('btn-mute').textContent = DR.state.soundOn ? '🔊' : '🔇';
-    DR.UI.showScreen('screen-game');
-    DR.UI.resetSideTabs();
-    DR.Map.renderMapChrome();
-    DR.Map.initTokens(DR.state);
-    DR.Map.fitMapBox();
-    DR.UI.renderParamitaLegend();
-    DR.UI.beginTurn();
+  function startTimer() {
     if (timerHandle) clearInterval(timerHandle);
     timerHandle = setInterval(tick, 1000);
   }
 
+  // ---------------- 存档快照 ----------------
+  DR.captureTurnSnapshot = function (state) {
+    lastTurnSnapshot = DR.Game.serialize(state);
+    DR.Store.writeSnapshot(lastTurnSnapshot, DR.setup, false);
+  };
+  // "保存并回主菜单":无论是否开启自动存档,都把本回合开始时的快照写入存档
+  DR.saveTurnSnapshot = function () {
+    if (DR.state && DR.state.phase !== 'ended') {
+      DR.Store.writeSnapshot(lastTurnSnapshot || DR.Game.serialize(DR.state), DR.setup, true);
+    }
+  };
+
+  // ---------------- 开局 / 读档 ----------------
+  function enterGame(state, opts) {
+    DR.state = state;
+    warned = { sprint: state.sprintActive, oneMin: state.timerSeconds <= 60 };
+    DR.Screens.closeGameOverlays();
+    DR.UI.hideModal();
+    DR.UI.showScreen('screen-game');
+    DR.UI.toggleMapExpand(false);
+    DR.Map.renderMapChrome();
+    DR.Map.initTokens(state);
+    DR.Map.refreshLamps(state);
+    DR.Map.fitMapBox();
+    DR.UI.resetSideTabs();
+    DR.UI.renderParamitaLegend();
+    DR.Screens.applySettings();
+    DR.UI.beginTurn(opts);
+    startTimer();
+  }
+
+  function startGame() {
+    const setup = DR.setup;
+    const teams = setup.teams.map((t, i) => ({
+      name: (t.name || '').trim() || (DR.TEAM_PRESETS[i] || DR.TEAM_PRESETS[0]).name,
+      icon: t.icon,
+      color: t.color,
+      route: t.route,
+    }));
+    const freq = DR.QUESTION_FREQ.find(f => f.key === setup.questionFreq) || DR.QUESTION_FREQ[1];
+    const state = DR.Game.init(teams, setup.timerMinutes, {
+      questionChance: freq.chance,
+      challenges: setup.challenges !== false,
+    });
+    state.soundOn = DR.Store.settings.soundOn;
+    DR.Audio.fanfare();
+    enterGame(state, { first: true });
+  }
+
+  DR.continueGame = function () {
+    const loaded = DR.Store.loadGame();
+    if (!loaded) {
+      DR.UI.toast('😢 没有找到可以继续的存档', 'warn');
+      DR.Screens.renderHome();
+      return;
+    }
+    if (loaded.setup) DR.setup = loaded.setup;
+    enterGame(loaded.state, { resumed: true, newRound: true });
+  };
+
+  // ---------------- 界面切换时的收尾 ----------------
+  DR.onScreenChange = function (id) {
+    DR.Stats && DR.Stats.hideTip();
+    if (id !== 'screen-game') {
+      const panel = $('map-layers');
+      if (panel) panel.classList.add('hidden');
+    }
+  };
+
+  // ---------------- 按钮 ----------------
   function wireGameEvents() {
     $('btn-roll').addEventListener('click', DR.UI.onRollClick);
     $('btn-next-team').addEventListener('click', DR.UI.onNextTeamClick);
-    $('btn-toggle-map').addEventListener('click', DR.UI.toggleMapExpand);
-
-    $('btn-fullscreen').addEventListener('click', () => {
-      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
-      else document.exitFullscreen();
-    });
-
+    $('btn-toggle-map').addEventListener('click', () => DR.UI.toggleMapExpand());
+    $('btn-fullscreen').addEventListener('click', DR.Screens.toggleFullscreen);
     $('btn-mute').addEventListener('click', () => {
-      if (!DR.state) return;
-      DR.state.soundOn = !DR.state.soundOn;
-      $('btn-mute').textContent = DR.state.soundOn ? '🔊' : '🔇';
+      const s = DR.Store.settings;
+      s.soundOn = !s.soundOn;
+      DR.Store.saveSettings();
+      DR.Screens.applySettings();
+      DR.UI.toast(s.soundOn ? '🔊 音效已打开' : '🔇 已静音', 'info');
     });
-
+    $('btn-codex-game').addEventListener('click', () => DR.Screens.openCodex());
     $('btn-end-game').addEventListener('click', () => {
       if (!DR.state || DR.state.phase === 'ended') return;
       DR.UI.showModal('confirmEnd', {});
     });
-
-    $('btn-restart').addEventListener('click', () => {
-      DR.UI.renderTeamConfigList();
-      DR.UI.showScreen('screen-setup');
-    });
+    $('btn-start-game').addEventListener('click', startGame);
+    // "同样的队伍再来一局"
+    $('btn-restart').addEventListener('click', startGame);
   }
 
+  // ---------------- 快捷键 ----------------
   function wireKeyboard() {
     document.addEventListener('keydown', e => {
-      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement && document.activeElement.tagName);
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const ae = document.activeElement;
+      const typing = ae && (['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName) || ae.isContentEditable);
+      const key = e.key;
 
-      if (e.key === 'Escape' && DR.UI.rulesOpen()) {
-        DR.UI.closeRules();
+      if (key === 'Escape') {
+        if (DR.Screens.closeTopOverlay()) { e.preventDefault(); return; }
+        if (DR.UI.closeModalByEsc()) { e.preventDefault(); return; }
+        const screen = DR.Screens.activeScreenId();
+        if (screen === 'screen-codex') { DR.Screens.closeCodex(); return; }
+        if (screen === 'screen-honors') { DR.Screens.goHome(); return; }
+        if (screen === 'screen-game' && DR.state && DR.state.phase !== 'ended' && !DR.UI.modalOpen()) { DR.Screens.pauseGame(); return; }
         return;
       }
-      if ((e.key === 'r' || e.key === 'R') && !typing) {
+      if (DR.Screens.isOpen('confirm-overlay')) return; // 确认框打开时只响应 Esc 与按钮本身
+      if (typing) return;
+
+      if (key === 'r' || key === 'R') {
         e.preventDefault();
         if (DR.UI.rulesOpen()) DR.UI.closeRules(); else DR.UI.openRules();
         return;
       }
-      if (DR.UI.rulesOpen()) return; // 规则手册打开时,不响应游戏内快捷键
+      if (DR.UI.rulesOpen() || DR.Screens.isOpen('settings-overlay')) return;
 
-      if (!DR.state || DR.state.phase === 'ended') return;
+      const screen = DR.Screens.activeScreenId();
+      if (screen !== 'screen-game' || !DR.state || DR.state.phase === 'ended') return;
 
-      if ((e.key === 'm' || e.key === 'M') && !typing) {
-        e.preventDefault();
-        DR.UI.toggleMapExpand();
-        return;
+      if (key === 'p' || key === 'P') { e.preventDefault(); DR.Screens.togglePause(); return; }
+      if (DR.Screens.paused) return;
+      if (key === 'd' || key === 'D') { e.preventDefault(); DR.Stats.toggleStats(); return; }
+      if (DR.Screens.isOpen('stats-overlay')) return;
+      if (key === 'b' || key === 'B') { e.preventDefault(); DR.Screens.openCodex(); return; }
+
+      const overlayOpen = DR.UI.modalOpen();
+      if (!overlayOpen) {
+        if (key === 'm' || key === 'M') { e.preventDefault(); DR.UI.toggleMapExpand(); return; }
+        if (key === 'f' || key === 'F') { e.preventDefault(); DR.Map.focusActiveTeam(); return; }
+        if (key === '+' || key === '=') { e.preventDefault(); DR.Map.zoomBy(15); return; }
+        if (key === '-' || key === '_') { e.preventDefault(); DR.Map.zoomBy(-15); return; }
+        if (key === '0') { e.preventDefault(); DR.Map.resetZoom(); return; }
+        const pan = { ArrowLeft: [90, 0], ArrowRight: [-90, 0], ArrowUp: [0, 90], ArrowDown: [0, -90] }[key];
+        if (pan && DR.Map.zoomed) { e.preventDefault(); DR.Map.panBy(pan[0], pan[1]); return; }
       }
-      const overlayOpen = !$('modal-overlay').classList.contains('hidden');
 
       if (e.code === 'Space') {
         e.preventDefault();
         if (!overlayOpen && !$('btn-roll').disabled) DR.UI.onRollClick();
         return;
       }
-      if (e.key === 'Enter') {
+      if (key === 'Enter') {
         // 阻止浏览器对"当前聚焦按钮"的默认 Enter 点击,否则会和下面的逻辑重复触发两次操作。
         e.preventDefault();
         if (overlayOpen) {
-          const confirmBtn = document.querySelector('.modal-confirm');
+          const confirmBtn = document.querySelector('#modal-box .modal-confirm');
           if (confirmBtn) confirmBtn.click();
-        } else if (!$('btn-next-team').classList.contains('hidden')) {
+        } else if (!$('btn-next-team').classList.contains('hidden') && !$('btn-next-team').disabled) {
           DR.UI.onNextTeamClick();
         } else if (!$('btn-roll').disabled) {
           DR.UI.onRollClick();
         }
         return;
       }
-      if (/^[1-4]$/.test(e.key)) {
+      if (/^[1-4]$/.test(key)) {
         if (overlayOpen && DR.UI.modalMode === 'question') {
-          const idx = +e.key - 1;
+          const idx = +key - 1;
           const btns = document.querySelectorAll('#modal-box .option-btn');
           if (btns[idx] && !btns[idx].disabled) btns[idx].click();
         }
@@ -130,12 +207,7 @@ var DR = window.DR || (window.DR = {});
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    $('team-count-display').textContent = DR.setup.teams.length;
-    DR.UI.renderTeamConfigList();
-    DR.UI.wireSetupEvents();
-
-    $('btn-start-game').addEventListener('click', startGame);
-
+    DR.Screens.init();
     wireGameEvents();
     wireKeyboard();
     DR.UI.wireTeamsPanelClick();
@@ -143,6 +215,17 @@ var DR = window.DR || (window.DR = {});
     DR.UI.wireRulesEvents();
     DR.Map.wireTooltipDismiss();
     DR.Map.wireMapZoomPan();
-    window.addEventListener('resize', () => { if (DR.state) DR.Map.fitMapBox(); });
+    DR.Map.wireLayerPanel();
+    DR.Stats.wire();
+    DR.Audio.unlockOnce();
+    window.addEventListener('resize', () => {
+      if (DR.state && DR.Screens.activeScreenId() === 'screen-game') DR.Map.fitMapBox();
+    });
+    // 切到别的浏览器标签页时自动暂停,回来时不会发现时间悄悄跑完了
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && DR.state && DR.state.phase !== 'ended' && DR.Screens.activeScreenId() === 'screen-game' && !DR.Screens.paused) {
+        DR.Screens.pauseGame();
+      }
+    });
   });
 })();

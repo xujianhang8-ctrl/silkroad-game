@@ -1,4 +1,7 @@
-/* 丝路法灯 · 地图渲染(SVG 地形/路线 + HTML 站点标记与棋子) */
+/* 丝路法灯 · 地图交互层
+ * 底图美术由 js/mapart.js 生成;本文件负责:站点与名胜标记、队伍棋子、缩放与平移、
+ * 细节分级(LOD)、鹰眼小地图、图层开关、定位/跟随当前队伍。
+ */
 var DR = window.DR || (window.DR = {});
 
 (function () {
@@ -9,14 +12,24 @@ function pctY(y) { return (y / H * 100) + '%'; }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function $(id) { return document.getElementById(id); }
 
-// ---------------- 地图缩放与平移(0~100% 对应 1x~MAX_SCALE 倍) ----------------
+// ---------------- 缩放与平移(0~100% 对应 1x~MAX_SCALE 倍) ----------------
 
 const MAX_SCALE = 3.2;
 let zoomPct = 0, mapScale = 1, panX = 0, panY = 0;
 let lastWrapW = 0, lastWrapH = 0;
 let isPanning = false, panStart = null;
+let interactTimer = null, viewAnim = null;
+let reducedMotion = false;
 
 function scaleFromPct(pct) { return 1 + (pct / 100) * (MAX_SCALE - 1); }
+function pctFromScale(scale) { return (scale - 1) / (MAX_SCALE - 1) * 100; }
+
+// 地图框内侧(不含边框)的尺寸与屏幕位置
+function wrapBox() {
+  const wrap = $('map-wrap');
+  const rect = wrap.getBoundingClientRect();
+  return { w: wrap.clientWidth, h: wrap.clientHeight, left: rect.left + wrap.clientLeft, top: rect.top + wrap.clientTop };
+}
 
 function clampPan(wrapW, wrapH, scale) {
   const minX = wrapW * (1 - scale), minY = wrapH * (1 - scale);
@@ -24,72 +37,156 @@ function clampPan(wrapW, wrapH, scale) {
   panY = Math.min(0, Math.max(minY, panY));
 }
 
+// 缩放/拖动进行中临时开启 will-change,让浏览器直接缩放位图,操作更顺滑;
+// 停下来之后再关掉,浏览器会按新的倍率重新绘制,矢量地图恢复清晰。
+function markInteracting() {
+  const canvas = $('map-canvas');
+  if (!canvas) return;
+  canvas.style.willChange = 'transform';
+  clearTimeout(interactTimer);
+  interactTimer = setTimeout(() => {
+    canvas.style.willChange = '';
+    layoutStationLabels();
+  }, 280);
+}
+
+function lodFor(wrapW) {
+  const eff = mapScale * (wrapW || W) / W; // 地图 1 个单位在屏幕上占多少像素
+  return eff >= 2.3 ? 2 : (eff >= 1.45 ? 1 : 0);
+}
+
 function applyMapTransform() {
   const canvas = $('map-canvas');
   const wrap = $('map-wrap');
   if (!canvas || !wrap) return;
   canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${mapScale})`;
-  // 站点/棋子反向缩放(只随放大略微变大),放大地图时它们之间的距离被拉开,不再互相遮挡。
-  canvas.style.setProperty('--marker-scale', (Math.pow(mapScale, 0.35) / mapScale).toFixed(4));
+  // 站点/棋子反向缩放(只随放大略微变大),放大地图时它们之间的距离被拉开,不再互相遮挡;
+  // 同时随地图在屏幕上的大小整体缩放(小屏幕上标记小一些,投影大屏上大一些)。
+  const base = Math.max(0.85, Math.min(1.2, (wrap.clientWidth || W) / 1100));
+  canvas.style.setProperty('--marker-scale', (base * Math.pow(mapScale, 0.35) / mapScale).toFixed(4));
+  // HTML 地名标注的字号以"地图单位"计:1 个地图单位 = 地图框宽度 / 1080 像素
+  canvas.style.setProperty('--mapu', ((wrap.clientWidth || W) / W).toFixed(4) + 'px');
   wrap.classList.toggle('zoomed', mapScale > 1.001);
+  wrap.classList.toggle('compact', wrap.clientWidth > 0 && wrap.clientWidth < 900);
+  const lod = String(lodFor(wrap.clientWidth));
+  if (wrap.dataset.lod !== lod) wrap.dataset.lod = lod;
+  const shown = Math.round(zoomPct);
   const slider = $('zoom-slider');
-  if (slider && +slider.value !== zoomPct) slider.value = zoomPct;
+  if (slider && +slider.value !== shown) slider.value = shown;
   const label = $('zoom-pct');
-  if (label) label.textContent = zoomPct + '%';
+  if (label) label.textContent = shown + '%';
+  updateMinimapView();
 }
 
 // anchorClientX/Y(可选,视口坐标):缩放时让该点在屏幕上的位置保持不变;
 // 不传则以地图正中心为缩放锚点(滑块、＋/－按钮都是这种情况)。
-function setZoom(newPct, anchorClientX, anchorClientY) {
+function setZoom(newPct, anchorClientX, anchorClientY, animate) {
   const wrap = $('map-wrap');
-  if (!wrap) return;
-  newPct = Math.max(0, Math.min(100, Math.round(newPct)));
-  const rect = wrap.getBoundingClientRect();
-  const wrapW = rect.width, wrapH = rect.height;
-  const oldScale = mapScale;
+  if (!wrap || !wrap.clientWidth) return;
+  newPct = Math.max(0, Math.min(100, newPct));
+  const { w, h, left, top } = wrapBox();
   const newScale = scaleFromPct(newPct);
-  const ax = anchorClientX == null ? wrapW / 2 : anchorClientX - rect.left;
-  const ay = anchorClientY == null ? wrapH / 2 : anchorClientY - rect.top;
-  const contentX = (ax - panX) / oldScale;
-  const contentY = (ay - panY) / oldScale;
-  panX = ax - contentX * newScale;
-  panY = ay - contentY * newScale;
-  zoomPct = newPct;
-  mapScale = newScale;
+  const ax = anchorClientX == null ? w / 2 : anchorClientX - left;
+  const ay = anchorClientY == null ? h / 2 : anchorClientY - top;
+  const contentX = (ax - panX) / mapScale;
+  const contentY = (ay - panY) / mapScale;
+  let px = ax - contentX * newScale, py = ay - contentY * newScale;
+  px = Math.min(0, Math.max(w * (1 - newScale), px));
+  py = Math.min(0, Math.max(h * (1 - newScale), py));
   hideStationTooltip();
-  clampPan(wrapW, wrapH, mapScale);
+  if (animate) { animateView(newScale, px, py, 320); return; }
+  cancelAnimationFrame(viewAnim);
+  zoomPct = newPct; mapScale = newScale; panX = px; panY = py;
+  markInteracting();
   applyMapTransform();
 }
 
+function zoomBy(delta) { setZoom(zoomPct + delta, null, null, true); }
+
+function panBy(dx, dy) {
+  if (mapScale <= 1.001) return;
+  const { w, h } = wrapBox();
+  const px = Math.min(0, Math.max(w * (1 - mapScale), panX + dx));
+  const py = Math.min(0, Math.max(h * (1 - mapScale), panY + dy));
+  animateView(mapScale, px, py, 180);
+}
+
 function resetZoom() {
+  cancelAnimationFrame(viewAnim);
   zoomPct = 0; mapScale = 1; panX = 0; panY = 0;
   applyMapTransform();
 }
 
-function onMapWheel(e) {
-  if (e.target.closest('.map-toolbar')) return;
-  e.preventDefault();
-  setZoom(zoomPct + (e.deltaY > 0 ? -6 : 6), e.clientX, e.clientY);
+function animateView(targetScale, targetX, targetY, ms) {
+  cancelAnimationFrame(viewAnim);
+  const s0 = mapScale, x0 = panX, y0 = panY;
+  if (reducedMotion || !ms) {
+    mapScale = targetScale; panX = targetX; panY = targetY; zoomPct = pctFromScale(mapScale);
+    markInteracting(); applyMapTransform();
+    return;
+  }
+  const t0 = performance.now();
+  const step = now => {
+    const k = Math.min(1, (now - t0) / ms);
+    const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    mapScale = s0 + (targetScale - s0) * e;
+    panX = x0 + (targetX - x0) * e;
+    panY = y0 + (targetY - y0) * e;
+    zoomPct = pctFromScale(mapScale);
+    markInteracting();
+    applyMapTransform();
+    if (k < 1) viewAnim = requestAnimationFrame(step);
+  };
+  viewAnim = requestAnimationFrame(step);
 }
+
+// 把地图坐标 (mx,my) 移到视野正中,可同时改变缩放
+function centerOn(mx, my, pct, ms) {
+  const wrap = $('map-wrap');
+  if (!wrap || !wrap.clientWidth) return;
+  const { w, h } = wrapBox();
+  const scale = scaleFromPct(pct == null ? zoomPct : pct);
+  let px = w / 2 - mx / W * w * scale, py = h / 2 - my / H * h * scale;
+  px = Math.min(0, Math.max(w * (1 - scale), px));
+  py = Math.min(0, Math.max(h * (1 - scale), py));
+  hideStationTooltip();
+  animateView(scale, px, py, ms == null ? 450 : ms);
+}
+
+function isInView(mx, my, margin) {
+  const { w, h } = wrapBox();
+  const sx = panX + mx / W * w * mapScale, sy = panY + my / H * h * mapScale;
+  return sx >= margin && sx <= w - margin && sy >= margin && sy <= h - margin;
+}
+
+function onMapWheel(e) {
+  if (e.target.closest('.map-toolbar, .map-layers, .minimap')) return;
+  e.preventDefault();
+  const delta = Math.max(-12, Math.min(12, -e.deltaY * (e.deltaMode === 1 ? 2 : 0.06)));
+  setZoom(zoomPct + delta, e.clientX, e.clientY);
+}
+
+const NO_PAN = '.station-marker, .landmark-marker, .token, .map-toolbar, .map-layers, .minimap, .map-legend';
 
 function onMapPointerDown(e) {
   if (mapScale <= 1.001 || e.button !== 0) return;
-  if (e.target.closest('.station-marker, .token, .map-toolbar, .map-legend')) return;
+  if (e.target.closest(NO_PAN)) return;
+  cancelAnimationFrame(viewAnim);
   isPanning = true;
   hideStationTooltip();
   panStart = { x: e.clientX, y: e.clientY, panX, panY };
   const wrap = $('map-wrap');
   wrap.classList.add('panning');
-  try { wrap.setPointerCapture(e.pointerId); } catch (_) { /* touch/pen without capture support: fine, drag still tracks via move */ }
+  try { wrap.setPointerCapture(e.pointerId); } catch (_) { /* 触屏/手写笔不支持捕获也没关系 */ }
 }
 
 function onMapPointerMove(e) {
   if (!isPanning || !panStart) return;
-  const wrap = $('map-wrap');
-  const rect = wrap.getBoundingClientRect();
+  const { w, h } = wrapBox();
   panX = panStart.panX + (e.clientX - panStart.x);
   panY = panStart.panY + (e.clientY - panStart.y);
-  clampPan(rect.width, rect.height, mapScale);
+  clampPan(w, h, mapScale);
+  markInteracting();
   applyMapTransform();
 }
 
@@ -98,7 +195,12 @@ function onMapPointerUp(e) {
   isPanning = false; panStart = null;
   const wrap = $('map-wrap');
   wrap.classList.remove('panning');
-  try { wrap.releasePointerCapture(e.pointerId); } catch (_) { /* already released or unsupported */ }
+  try { wrap.releasePointerCapture(e.pointerId); } catch (_) { /* 已释放 */ }
+}
+
+function onMapDblClick(e) {
+  if (e.target.closest(NO_PAN)) return;
+  setZoom(zoomPct >= 99 ? 0 : zoomPct + 30, e.clientX, e.clientY, true);
 }
 
 function wireMapZoomPan() {
@@ -111,17 +213,187 @@ function wireMapZoomPan() {
   wrap.addEventListener('pointerup', onMapPointerUp);
   wrap.addEventListener('pointerleave', onMapPointerUp);
   wrap.addEventListener('pointercancel', onMapPointerUp);
+  wrap.addEventListener('dblclick', onMapDblClick);
+  // 地图框的宽高带有过渡动画;动画结束后按最终尺寸重新计算标记大小与站名位置
+  wrap.addEventListener('transitionend', e => {
+    if (e.target !== wrap || (e.propertyName !== 'width' && e.propertyName !== 'height')) return;
+    applyMapTransform();
+    scheduleLabelLayout();
+  });
   slider.addEventListener('input', () => setZoom(+slider.value));
-  $('btn-zoom-in').addEventListener('click', () => setZoom(zoomPct + 15));
-  $('btn-zoom-out').addEventListener('click', () => setZoom(zoomPct - 15));
+  $('btn-zoom-in').addEventListener('click', () => zoomBy(15));
+  $('btn-zoom-out').addEventListener('click', () => zoomBy(-15));
+  $('btn-map-focus').addEventListener('click', () => { DR.Audio.click(); focusActiveTeam(); });
+  $('btn-map-layers').addEventListener('click', e => { e.stopPropagation(); toggleLayerPanel(); });
+  wireMinimap();
   // 下方操作区的高度会随阶段进度条、行动按钮、"下一队"按钮的出现而变化,
   // 用 ResizeObserver 统一重新适配地图尺寸,避免掷骰按钮被挤出屏幕。
   if (window.ResizeObserver) {
-    const ro = new ResizeObserver(() => { if (DR.state) fitMapBox(); });
+    const ro = new ResizeObserver(() => { if (DR.state && $('screen-game').classList.contains('active')) fitMapBox(); });
     ro.observe($('main-stage'));
     ro.observe($('turn-control'));
   }
 }
+
+// ---------------- 鹰眼小地图 ----------------
+
+function renderMinimap() {
+  const svg = $('minimap-svg');
+  if (svg) svg.innerHTML = DR.MapArt.minimap(true);
+}
+
+function updateMinimapView() {
+  const mm = $('minimap');
+  const wrap = $('map-wrap');
+  if (!mm || !wrap) return;
+  mm.classList.toggle('show', mapScale > 1.001);
+  const rect = mm.querySelector('.mm-view');
+  if (!rect || !wrap.clientWidth) return;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  rect.setAttribute('x', (-panX / (w * mapScale) * W).toFixed(1));
+  rect.setAttribute('y', (-panY / (h * mapScale) * H).toFixed(1));
+  rect.setAttribute('width', (W / mapScale).toFixed(1));
+  rect.setAttribute('height', (H / mapScale).toFixed(1));
+}
+
+function updateMinimapTokens(state) {
+  const g = document.querySelector('#minimap .mm-tokens');
+  if (!g || !state) return;
+  g.innerHTML = state.teams.map((t, i) => {
+    const c = coordFor(t.route, t.position);
+    const active = i === state.activeIndex;
+    return `<circle cx="${c.x}" cy="${c.y}" r="${active ? 22 : 15}" fill="${t.color}" stroke="#fff" stroke-width="${active ? 7 : 5}"/>`;
+  }).join('');
+}
+
+function wireMinimap() {
+  const mm = $('minimap');
+  if (!mm) return;
+  let dragging = false;
+  const toMap = e => {
+    const r = mm.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+  };
+  mm.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    dragging = true;
+    try { mm.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    const p = toMap(e);
+    centerOn(p.x, p.y, null, 200);
+  });
+  mm.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const p = toMap(e);
+    centerOn(p.x, p.y, null, 0);
+  });
+  const stop = e => { dragging = false; try { mm.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ } };
+  mm.addEventListener('pointerup', stop);
+  mm.addEventListener('pointercancel', stop);
+}
+
+// ---------------- 图层 ----------------
+
+const LAYERS = [
+  { key: 'labels', label: '🏷️ 地名注记', offClass: 'hide-labels' },
+  { key: 'terrain', label: '⛰️ 山川地貌', offClass: 'hide-terrain' },
+  { key: 'landmarks', label: '🏛️ 名胜古迹', offClass: 'hide-landmarks' },
+  { key: 'history', label: '🧭 玄奘真实路线', offClass: 'hide-history' },
+  { key: 'deco', label: '⛵ 船只驼队与装饰', offClass: 'hide-deco' },
+  { key: 'footprints', label: '👣 到访足迹', offClass: 'hide-footprints' },
+  { key: 'grid', label: '▦ 计里画方网格', onClass: 'show-grid' },
+];
+
+function currentLayers() {
+  const s = DR.Store && DR.Store.settings;
+  return (s && s.layers) || {};
+}
+
+function applyLayers() {
+  const wrap = $('map-wrap');
+  if (!wrap) return;
+  const layers = currentLayers();
+  LAYERS.forEach(l => {
+    const on = layers[l.key] !== false;
+    if (l.offClass) wrap.classList.toggle(l.offClass, !on);
+    if (l.onClass) wrap.classList.toggle(l.onClass, on);
+  });
+  renderLayerPanel();
+}
+
+function renderLayerPanel() {
+  const panel = $('map-layers');
+  if (!panel) return;
+  const layers = currentLayers();
+  panel.innerHTML = `<div class="ml-title">🗂 地图图层</div>` + LAYERS.map(l => `
+    <label class="ml-row"><input type="checkbox" data-layer="${l.key}" ${layers[l.key] !== false ? 'checked' : ''}><span>${l.label}</span></label>
+  `).join('') + `<div class="ml-hint">放大地图后会显示更多小地名、河名和名胜古迹</div>`;
+}
+
+function toggleLayerPanel(force) {
+  const panel = $('map-layers');
+  if (!panel) return;
+  const show = force == null ? panel.classList.contains('hidden') : force;
+  panel.classList.toggle('hidden', !show);
+  $('btn-map-layers').classList.toggle('active', show);
+  if (show) renderLayerPanel();
+}
+
+function wireLayerPanel() {
+  const panel = $('map-layers');
+  if (!panel) return;
+  panel.addEventListener('change', e => {
+    const key = e.target.dataset.layer;
+    if (!key || !DR.Store) return;
+    DR.Store.settings.layers[key] = e.target.checked;
+    DR.Store.saveSettings();
+    applyLayers();
+  });
+  panel.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', e => {
+    if (!panel.classList.contains('hidden') && !e.target.closest('#map-layers, #btn-map-layers')) toggleLayerPanel(false);
+  });
+}
+
+function setReducedMotion(on) {
+  reducedMotion = !!on;
+  const wrap = $('map-wrap');
+  if (wrap) wrap.classList.toggle('no-anim', reducedMotion);
+  ['map-svg', 'map-travelers', 'home-map'].forEach(id => {
+    const svg = $(id);
+    try {
+      if (svg && svg.pauseAnimations) { if (reducedMotion) svg.pauseAnimations(); else svg.unpauseAnimations(); }
+    } catch (_) { /* 旧浏览器不支持 SMIL 控制 */ }
+  });
+}
+
+// ---------------- 沿航线行进的商队与船只 ----------------
+// 每 120 毫秒挪动一次(约 8 帧/秒):驼队走得很慢,看起来依旧连贯,却比逐帧动画省下大量计算。
+let travelerTimer = null;
+function startTravelers() {
+  clearInterval(travelerTimer);
+  const svg = $('map-travelers');
+  if (!svg) return;
+  const items = Array.from(svg.querySelectorAll('.traveler')).map(g => {
+    const path = svg.querySelector('#dr-route-' + g.dataset.route);
+    return path ? { g, path, len: path.getTotalLength(), dur: +g.dataset.dur, begin: +g.dataset.begin, reverse: g.dataset.reverse === '1' } : null;
+  }).filter(Boolean);
+  if (!items.length) return;
+  const tick = () => {
+    if (reducedMotion || document.hidden || !$('screen-game').classList.contains('active')) return;
+    const now = performance.now() / 1000;
+    items.forEach(it => {
+      const t = ((((now - it.begin) % it.dur) + it.dur) % it.dur) / it.dur;
+      const p = it.path.getPointAtLength((it.reverse ? 1 - t : t) * it.len);
+      const fade = Math.max(0, Math.min(1, t / 0.04, (1 - t) / 0.04));
+      it.g.setAttribute('transform', `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`);
+      it.g.setAttribute('opacity', fade.toFixed(2));
+    });
+  };
+  tick();
+  travelerTimer = setInterval(tick, 120);
+}
+
+// ---------------- 站点坐标与图标 ----------------
 
 function pathOf(routeKey) { return routeKey === 'land' ? DR.LAND_PATH : DR.SEA_PATH; }
 
@@ -138,173 +410,20 @@ function iconForStation(st) {
   return '📍';
 }
 
-function svgNS(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
-
-function pathD(coords) {
-  return coords.map((c, i) => (i === 0 ? 'M' : 'L') + c.x + ',' + c.y).join(' ');
-}
-
-// ---------------- 静态地图底图(地形/航线/站点/装饰,只需渲染一次) ----------------
-
-function cornerBracket(x, y, dx, dy) {
-  return `<path d="M${x},${y} L${x + dx * 26},${y} M${x},${y} L${x},${y + dy * 26}"
-      stroke="#8a6a2f" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.55" />
-    <circle cx="${x}" cy="${y}" r="2.6" fill="#8a6a2f" opacity="0.55" />`;
-}
+// ---------------- 底图与标记 ----------------
 
 function renderMapChrome() {
-  const svg = $('map-svg');
-  const landCoords = [DR.HOME_COORD, ...DR.LAND_PATH];
-  const seaCoords = [DR.HOME_COORD, ...DR.SEA_PATH];
-
-  const mountainSpots = [
-    { x: 600, y: 205, snow: false }, { x: 300, y: 218, snow: false },
-    { x: 330, y: 248, snow: true }, { x: 270, y: 292, snow: true },
-    { x: 246, y: 338, snow: true }, { x: 225, y: 378, snow: true },
-  ];
-  const waveSpots = [[760, 258], [680, 300], [600, 330], [520, 360], [440, 385], [370, 410], [305, 432]];
-  const oasisSpots = [[698, 150], [485, 145], [395, 195], [230, 465]];
-  const duneSpots = [[900, 160], [820, 195], [730, 175], [640, 210], [560, 195], [480, 210], [400, 230], [340, 260]];
-  const caravanSpots = [{ x: 828, y: 96, r: -6 }, { x: 724, y: 108, r: 4 }, { x: 417, y: 158, r: -4 }, { x: 276, y: 308, r: 10 }];
-  const sailSpots = [{ x: 700, y: 215 }, { x: 500, y: 340 }, { x: 345, y: 396 }];
-  const cloudSpots = [[680, 55], [430, 50], [215, 78], [885, 52]];
-  const birdSpots = [[555, 62], [592, 70], [630, 60]];
-  const dolphinSpots = [{ x: 630, y: 292, r: -8 }, { x: 460, y: 372, r: 6 }];
-  const lanternSpots = [[957, 173], [612, 197], [382, 262]];
-
-  svg.innerHTML = `
-    <defs>
-      <linearGradient id="terrainGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#eee0ba" />
-        <stop offset="30%" stop-color="#e2cf98" />
-        <stop offset="50%" stop-color="#cdc48a" />
-        <stop offset="68%" stop-color="#9dbd93" />
-        <stop offset="84%" stop-color="#5f9bab" />
-        <stop offset="100%" stop-color="#3f7ea3" />
-      </linearGradient>
-      <radialGradient id="vignette" cx="50%" cy="45%" r="75%">
-        <stop offset="60%" stop-color="#000" stop-opacity="0" />
-        <stop offset="100%" stop-color="#000" stop-opacity="0.18" />
-      </radialGradient>
-      <pattern id="grainPattern" width="6" height="6" patternUnits="userSpaceOnUse">
-        <circle cx="1.4" cy="1.4" r="0.6" fill="#000" opacity="0.5" />
-      </pattern>
-      <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
-        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.35" />
-      </filter>
-    </defs>
-
-    <rect x="0" y="0" width="${W}" height="${H}" fill="url(#terrainGrad)" />
-    <rect x="0" y="0" width="${W}" height="${H}" fill="url(#grainPattern)" opacity="0.05" />
-
-    <g class="deco-river" fill="none" stroke="#5a9fc7" stroke-width="6" opacity="0.35" stroke-linecap="round">
-      <path d="M120,640 C160,560 175,520 205,478 C230,445 232,420 210,390" />
-    </g>
-
-    <g class="deco-dunes" stroke="#b98f4e" stroke-width="2" fill="none" opacity="0.3" stroke-linecap="round">
-      ${duneSpots.map(([x, y]) => `<path d="M${x - 14},${y} q7,-6 14,0 q7,6 14,0" />`).join('')}
-    </g>
-
-    <g class="deco-mountains" opacity="0.75">
-      ${mountainSpots.map(({ x, y, snow }) => `
-        <g>
-          <polygon points="${x - 14},${y + 12} ${x},${y - 13} ${x},${y + 12}" fill="#8a7355" />
-          <polygon points="${x},${y - 13} ${x + 14},${y + 12} ${x},${y + 12}" fill="#6b5940" />
-          ${snow ? `<polygon points="${x - 4},${y - 3} ${x},${y - 13} ${x + 4},${y - 3} ${x},${y + 1}" fill="#eef2f6" opacity="0.9" />` : ''}
-        </g>
-      `).join('')}
-    </g>
-
-    <g class="deco-oasis">
-      ${oasisSpots.map(([x, y]) => `
-        <g opacity="0.7">
-          <ellipse cx="${x}" cy="${y + 5}" rx="10" ry="4" fill="#3f7d63" opacity="0.3" />
-          <circle cx="${x}" cy="${y}" r="7" fill="#6fae6f" stroke="#3f7d63" stroke-width="1.5" />
-          <text x="${x}" y="${y + 4}" text-anchor="middle" font-size="11">🌴</text>
-        </g>
-      `).join('')}
-    </g>
-
-    <g class="deco-waves" stroke="#2f6483" stroke-width="2.5" fill="none" opacity="0.4" stroke-linecap="round">
-      ${waveSpots.map(([x, y]) => `<path d="M${x - 18},${y} q9,-8 18,0 q9,8 18,0" />`).join('')}
-    </g>
-    <g class="deco-sails" opacity="0.85">
-      ${sailSpots.map(s => `<text x="${s.x}" y="${s.y}" text-anchor="middle" font-size="15">⛵</text>`).join('')}
-    </g>
-    <g class="deco-dolphins" opacity="0.75">
-      ${dolphinSpots.map(d => `<text x="${d.x}" y="${d.y}" text-anchor="middle" font-size="13" transform="rotate(${d.r} ${d.x} ${d.y})">🐬</text>`).join('')}
-    </g>
-    <g class="deco-caravan" opacity="0.8">
-      ${caravanSpots.map(c => `<text x="${c.x}" y="${c.y}" text-anchor="middle" font-size="14" transform="rotate(${c.r} ${c.x} ${c.y})">🐫</text>`).join('')}
-    </g>
-    <g class="deco-lanterns" opacity="0.85">
-      ${lanternSpots.map(([x, y]) => `<text x="${x}" y="${y}" text-anchor="middle" font-size="12">🏮</text>`).join('')}
-    </g>
-    <g class="deco-clouds" fill="#fff" opacity="0.55">
-      ${cloudSpots.map(([x, y]) => `
-        <g>
-          <ellipse cx="${x}" cy="${y}" rx="17" ry="6.5" />
-          <ellipse cx="${x - 11}" cy="${y + 2}" rx="9" ry="5.5" />
-          <ellipse cx="${x + 12}" cy="${y + 2}" rx="9" ry="5" />
-        </g>
-      `).join('')}
-    </g>
-    <g class="deco-birds" stroke="#5a4a30" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.5">
-      ${birdSpots.map(([x, y]) => `<path d="M${x - 6},${y} Q${x - 3},${y - 4} ${x},${y} Q${x + 3},${y - 4} ${x + 6},${y}" />`).join('')}
-    </g>
-
-    <path class="route-line route-land-casing" d="${pathD(landCoords)}" />
-    <path class="route-line route-land" d="${pathD(landCoords)}" />
-    <path class="route-line route-sea-casing" d="${pathD(seaCoords)}" />
-    <path class="route-line route-sea" d="${pathD(seaCoords)}" />
-
-    <g class="compass" transform="translate(975,400)" filter="url(#softShadow)">
-      <circle r="32" fill="#f4ecd8" stroke="#8a6a2f" stroke-width="2" opacity="0.92" />
-      <circle r="25" fill="none" stroke="#8a6a2f" stroke-width="1" opacity="0.5" />
-      <g stroke="#8a6a2f" stroke-width="1.2" opacity="0.6">
-        <line x1="0" y1="-25" x2="0" y2="-19" /><line x1="0" y1="25" x2="0" y2="19" />
-        <line x1="-25" y1="0" x2="-19" y2="0" /><line x1="25" y1="0" x2="19" y2="0" />
-        <line x1="-17.7" y1="-17.7" x2="-13.4" y2="-13.4" /><line x1="17.7" y1="-17.7" x2="13.4" y2="-13.4" />
-        <line x1="-17.7" y1="17.7" x2="-13.4" y2="13.4" /><line x1="17.7" y1="17.7" x2="13.4" y2="13.4" />
-      </g>
-      <path d="M0,-23 L6,0 L0,5 L-6,0 Z" fill="#b2503b" />
-      <path d="M0,23 L4,3 L0,0 L-4,3 Z" fill="#8a6a2f" opacity="0.7" />
-      <text y="-36" text-anchor="middle" class="compass-label">北</text>
-    </g>
-
-    <g class="scale-bar" transform="translate(903,452)" filter="url(#softShadow)">
-      <rect width="144" height="34" rx="6" fill="#f4ecd8" stroke="#8a6a2f" stroke-width="1.5" opacity="0.92" />
-      <line x1="12" y1="25" x2="132" y2="25" stroke="#5a4a30" stroke-width="2" />
-      <line x1="12" y1="20" x2="12" y2="30" stroke="#5a4a30" stroke-width="2" />
-      <line x1="72" y1="21" x2="72" y2="29" stroke="#5a4a30" stroke-width="1.3" />
-      <line x1="132" y1="20" x2="132" y2="30" stroke="#5a4a30" stroke-width="2" />
-      <text x="72" y="13" text-anchor="middle" class="scale-bar-label">约 500 里</text>
-    </g>
-
-    <g class="cartouche" transform="translate(55,32)" filter="url(#softShadow)">
-      <rect width="225" height="72" rx="10" fill="#f4ecd8" stroke="#8a6a2f" stroke-width="2" opacity="0.95" />
-      <rect x="4" y="4" width="217" height="64" rx="7" fill="none" stroke="#8a6a2f" stroke-width="1" opacity="0.4" />
-      <text x="20" y="43" text-anchor="middle" font-size="15">🪷</text>
-      <text x="113" y="27" text-anchor="middle" class="cartouche-title">丝路法灯古地图</text>
-      <line x1="40" y1="35" x2="186" y2="35" stroke="#c9992f" stroke-width="1" opacity="0.6" />
-      <text x="113" y="51" text-anchor="middle" class="cartouche-sub">长安 —— 那烂陀寺</text>
-      <text x="206" y="43" text-anchor="middle" font-size="15">🪔</text>
-    </g>
-
-    <rect x="0" y="0" width="${W}" height="${H}" fill="url(#vignette)" />
-
-    <g class="deco-frame">
-      <rect x="6" y="6" width="${W - 12}" height="${H - 12}" fill="none" stroke="#8a6a2f" stroke-width="2" opacity="0.55" />
-      <rect x="14" y="14" width="${W - 28}" height="${H - 28}" fill="none" stroke="#8a6a2f" stroke-width="1" opacity="0.35" />
-      ${cornerBracket(18, 18, 1, 1)}
-      ${cornerBracket(W - 18, 18, -1, 1)}
-      ${cornerBracket(18, H - 18, 1, -1)}
-      ${cornerBracket(W - 18, H - 18, -1, -1)}
-    </g>
-  `;
-
+  $('map-svg').innerHTML = DR.MapArt.svg();
+  $('map-travelers').innerHTML = DR.MapArt.travelersSvg('js');
+  startTravelers();
+  $('map-labels').innerHTML = DR.MapArt.labelsHtml();
+  renderMinimap();
   renderMarkers();
+  applyLayers();
+  setReducedMotion(reducedMotion);
   resetZoom();
+  lastWrapW = 0; lastWrapH = 0; // 强制下一次 fitMapBox 重新计算标签位置
+  scheduleLabelLayout();
 }
 
 function renderMarkers() {
@@ -312,32 +431,93 @@ function renderMarkers() {
   wrap.innerHTML = '';
 
   const home = document.createElement('div');
-  home.className = 'station-marker home-marker';
+  home.className = 'station-marker home-marker label-below';
+  home.dataset.labelPref = 'below';
   home.style.left = pctX(DR.HOME_COORD.x);
   home.style.top = pctY(DR.HOME_COORD.y);
   home.innerHTML = `<span class="sm-icon">🏯</span><span class="sm-label">长安</span>`;
-  home.addEventListener('click', () => showStationTooltip(home, { name: '长安', blurb: '大唐的都城,商队与求法僧人从这里踏上丝绸之路的起点。' }));
+  home.addEventListener('click', () => showStationTooltip(home, { name: '长安', type: 'home', blurb: '大唐的都城,商队与求法僧人从这里踏上丝绸之路的起点。' }));
   wrap.appendChild(home);
 
   ['land', 'sea'].forEach(routeKey => {
     pathOf(routeKey).forEach((st, idx) => {
       const pos = idx + 1;
       const el = document.createElement('div');
-      el.className = `station-marker ${st.type} ${st.crossover ? 'crossover' : ''} label-${pos % 2 === 0 ? 'below' : 'above'}`;
+      const labelPos = st.label || (pos % 2 === 0 ? 'below' : 'above');
+      el.className = `station-marker ${st.type} ${st.crossover ? 'crossover' : ''} label-${labelPos}`;
+      el.dataset.labelPref = labelPos;
       el.style.left = pctX(st.x);
       el.style.top = pctY(st.y);
       el.innerHTML = `<span class="sm-icon">${iconForStation(st)}</span><span class="sm-label">${st.name}</span>`;
       el.addEventListener('click', () => showStationTooltip(el, st));
-      wrap.appendChild(el);
       el.dataset.route = routeKey;
       el.dataset.pos = pos;
+      wrap.appendChild(el);
     });
   });
+
+  (DR.LANDMARKS || []).forEach(lm => {
+    const el = document.createElement('div');
+    el.className = `landmark-marker lod${lm.lod || 1}`;
+    el.style.left = pctX(lm.x);
+    el.style.top = pctY(lm.y);
+    el.innerHTML = `<span class="lm-icon">${lm.icon}</span><span class="lm-label">${lm.name}</span>`;
+    el.addEventListener('click', () => showStationTooltip(el, { name: lm.name, blurb: lm.blurb, kind: lm.kind, landmarkKey: lm.key }));
+    wrap.appendChild(el);
+  });
+}
+
+// ---------------- 站名标签自动避让 ----------------
+// 依重要程度(终点 > 起点 > 圣地 > 剧情 > 驿站)依次摆放站名:先试站点设定的方位,再试下/上/右/左,
+// 找不到不重叠的位置就暂时隐藏(鼠标移上去仍会显示;放大地图后空间变大,会重新出现)。
+
+const LABEL_POSITIONS = ['below', 'above', 'right', 'left'];
+function labelPriority(el) {
+  if (el.classList.contains('final')) return 5;
+  if (el.classList.contains('home-marker')) return 4;
+  if (el.classList.contains('site')) return 3;
+  if (el.classList.contains('story')) return 2;
+  return 1;
+}
+function setLabelPos(el, pos) {
+  LABEL_POSITIONS.forEach(p => el.classList.toggle('label-' + p, p === pos));
+}
+function rectsOverlap(a, b) {
+  return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+}
+let labelLayoutPending = false;
+function layoutStationLabels() {
+  const wrap = $('map-markers');
+  if (!wrap || !wrap.offsetParent) return;
+  const markers = Array.from(wrap.querySelectorAll('.station-marker'));
+  if (!markers.length) return;
+  markers.forEach(m => m.classList.remove('label-hidden'));
+  const icons = markers.map(m => m.querySelector('.sm-icon').getBoundingClientRect());
+  const placed = icons.slice();
+  const order = markers.map((m, i) => i).sort((a, b) => labelPriority(markers[b]) - labelPriority(markers[a]) || a - b);
+  order.forEach(i => {
+    const m = markers[i];
+    const pref = m.dataset.labelPref || 'below';
+    const tries = [pref, ...LABEL_POSITIONS.filter(p => p !== pref)];
+    for (const pos of tries) {
+      setLabelPos(m, pos);
+      const r = m.querySelector('.sm-label').getBoundingClientRect();
+      if (!placed.some((p, k) => k !== i && rectsOverlap(p, r))) { placed.push(r); return; }
+    }
+    setLabelPos(m, pref);
+    m.classList.add('label-hidden');
+  });
+}
+function scheduleLabelLayout() {
+  if (labelLayoutPending) return;
+  labelLayoutPending = true;
+  requestAnimationFrame(() => { labelLayoutPending = false; layoutStationLabels(); });
 }
 
 // ---------------- 站点小知识提示框 ----------------
 
 function stationTypeLabel(st) {
+  if (st.landmarkKey) return '🏛️ 名胜古迹 · ' + st.kind;
   if (st.type === 'final') return '🪷 终点圣地';
   if (st.type === 'site') return '🛕 圣地 · 可结缘';
   if (st.type === 'story') return '⭐ 剧情站';
@@ -360,6 +540,12 @@ function showStationTooltip(markerEl, station) {
   } else {
     offersEl.classList.add('hidden');
   }
+  // 站点/名胜都能一键跳到"丝路百科"里对应的条目
+  const more = tip.querySelector('.st-tip-more');
+  if (more) {
+    more.dataset.tab = station.landmarkKey ? 'landmarks' : 'stations';
+    more.dataset.key = station.landmarkKey || station.name;
+  }
   tip.classList.remove('hidden');
   const r = markerEl.getBoundingClientRect();
   const tipH = tip.offsetHeight;
@@ -371,14 +557,25 @@ function showStationTooltip(markerEl, station) {
   tip.style.top = (below ? Math.min(r.bottom + 12, window.innerHeight - tipH - 8) : r.top - 12) + 'px';
   DR.Audio.click();
 }
-function hideStationTooltip() { $('station-tooltip').classList.add('hidden'); }
+function hideStationTooltip() {
+  const tip = $('station-tooltip');
+  if (tip) tip.classList.add('hidden');
+}
 
 function wireTooltipDismiss() {
   document.addEventListener('click', e => {
-    if (e.target.closest('.station-marker') || e.target.closest('#station-tooltip')) return;
+    if (e.target.closest('.station-marker, .landmark-marker, #station-tooltip')) return;
     hideStationTooltip();
   });
-  $('station-tooltip').querySelector('.st-tip-close').addEventListener('click', hideStationTooltip);
+  const tip = $('station-tooltip');
+  tip.querySelector('.st-tip-close').addEventListener('click', hideStationTooltip);
+  const more = tip.querySelector('.st-tip-more');
+  if (more) {
+    more.addEventListener('click', () => {
+      hideStationTooltip();
+      if (DR.Screens) DR.Screens.openCodex(more.dataset.tab, more.dataset.key);
+    });
+  }
 }
 
 // ---------------- 驿站法灯标记 ----------------
@@ -396,6 +593,15 @@ function markLamp(routeKey, pos, team) {
   }
   badge.style.background = team.color;
   badge.title = `${team.name} 的法灯`;
+}
+
+// 读档后按记录重新点亮所有法灯
+function refreshLamps(state) {
+  Object.keys(state.lampOwners || {}).forEach(key => {
+    const [routeKey, pos] = key.split(':');
+    const team = state.teams[state.lampOwners[key].teamId];
+    if (team) markLamp(routeKey, +pos, team);
+  });
 }
 
 // ---------------- 到访足迹(每个站点下方,标出曾经过此地的队伍色点) ----------------
@@ -428,11 +634,13 @@ function updateVisitedMarks(state) {
 
 function initTokens(state) {
   const wrap = $('map-markers');
+  wrap.querySelectorAll('.token').forEach(el => el.remove());
   state.teams.forEach(team => {
     const el = document.createElement('div');
     el.className = 'token';
     el.id = 'token-' + team.id;
     el.style.borderColor = team.color;
+    el.style.setProperty('--team-color', team.color);
     el.textContent = team.icon;
     el.title = team.name;
     wrap.appendChild(el);
@@ -460,6 +668,11 @@ function layoutTokens(state) {
       el.style.transform = `translate(-50%, -50%) scale(var(--marker-scale, 1)) translateX(${offsetX}px)`;
     });
   });
+  state.teams.forEach((team, i) => {
+    const el = $('token-' + team.id);
+    if (el) el.classList.toggle('active', i === state.activeIndex && state.phase !== 'ended');
+  });
+  updateMinimapTokens(state);
 }
 
 async function animateActiveMove(state, fromPos) {
@@ -480,10 +693,22 @@ async function animateActiveMove(state, fromPos) {
     el.style.top = pctY(c.y);
     el.style.transform = 'translate(-50%, -50%) scale(var(--marker-scale, 1))';
     DR.Audio.hop();
+    // 放大查看时,棋子走出视野就让镜头跟过去
+    if (mapScale > 1.001 && !isInView(c.x, c.y, 50)) centerOn(c.x, c.y, null, reducedMotion ? 0 : 260);
     await sleep(230);
   }
   el.style.zIndex = '';
   layoutTokens(state);
+}
+
+// 定位当前队伍:放大到至少 45%,并把当前队伍的棋子移到视野中央
+function focusActiveTeam() {
+  const state = DR.state;
+  if (!state) return;
+  const team = DR.Game.activeTeam(state);
+  const c = coordFor(team.route, team.position);
+  centerOn(c.x, c.y, Math.max(zoomPct, 45));
+  pulseTeamToken(team.id);
 }
 
 // #map-wrap 需要严格保持 W:H 比例,才能让 HTML 标记的百分比坐标
@@ -511,8 +736,10 @@ function fitMapBox() {
   // 避免回合中频繁调用 fitMapBox 把玩家正在查看的缩放/平移重置掉。
   if (w !== lastWrapW || h !== lastWrapH) {
     lastWrapW = w; lastWrapH = h;
-    clampPan(w, h, mapScale);
+    const inner = wrapBox();
+    clampPan(inner.w, inner.h, mapScale);
     applyMapTransform();
+    scheduleLabelLayout();
   }
 }
 
@@ -524,19 +751,42 @@ function pulseTeamToken(teamId) {
   el.classList.add('token-pulse');
 }
 
+// 点击队伍卡片:闪烁棋子;如果地图正处于放大状态,顺便把镜头移过去
+function showTeam(teamId) {
+  pulseTeamToken(teamId);
+  const state = DR.state;
+  if (!state || mapScale <= 1.001) return;
+  const team = state.teams.find(t => t.id === teamId);
+  if (!team) return;
+  const c = coordFor(team.route, team.position);
+  centerOn(c.x, c.y);
+}
+
 DR.Map = {
   renderMapChrome,
   initTokens,
   layoutTokens,
   animateActiveMove,
   pulseTeamToken,
+  showTeam,
+  focusActiveTeam,
   wireTooltipDismiss,
   hideStationTooltip,
   fitMapBox,
   markLamp,
+  refreshLamps,
   updateVisitedMarks,
   wireMapZoomPan,
+  wireLayerPanel,
+  applyLayers,
+  toggleLayerPanel,
+  setReducedMotion,
   resetZoom,
+  zoomBy,
+  panBy,
+  coordFor,
+  layoutStationLabels: scheduleLabelLayout,
+  get zoomed() { return mapScale > 1.001; },
 };
 
 })();

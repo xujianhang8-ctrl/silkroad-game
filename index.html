@@ -8,55 +8,129 @@
 </head>
 <body>
 
-<!-- ===================== 设置界面 ===================== -->
-<section id="screen-setup" class="screen active">
-  <div class="setup-wrap">
-    <h1 class="game-title">丝路法灯 <span class="subtitle">大乘取经记</span></h1>
-    <p class="setup-hint">建议 10–15 名学生 → 分成 4–6 组,每组 2–3 人。全班共用一块大屏幕,轮流派一位"操盘小法师"操作。</p>
-
-    <div class="setup-row">
-      <label>队伍数量</label>
-      <div class="stepper">
-        <button id="btn-team-minus" class="btn-round">－</button>
-        <span id="team-count-display">5</span>
-        <button id="btn-team-plus" class="btn-round">＋</button>
+<!-- ===================== 主菜单 ===================== -->
+<section id="screen-home" class="screen active">
+  <div class="home-bg" aria-hidden="true">
+    <div class="home-map-pan"><svg id="home-map" class="home-map" viewBox="0 0 1080 640" preserveAspectRatio="xMidYMid slice"></svg></div>
+  </div>
+  <div class="home-inner">
+    <div class="home-left">
+      <div class="home-title-block">
+        <div class="home-lamp" aria-hidden="true">🪔</div>
+        <h1 class="home-title">丝路法灯</h1>
+        <div class="home-subtitle">大乘取经记 · 课堂大屏互动游戏</div>
       </div>
+      <nav class="home-menu" aria-label="主菜单">
+        <button id="home-new" class="home-btn primary"><span class="hb-icon">🪔</span><span class="hb-text"><b>开启新旅程</b><small>组建队伍 · 选择路线 · 出发</small></span></button>
+        <button id="home-continue" class="home-btn hidden"><span class="hb-icon">▶</span><span class="hb-text"><b>继续上次旅程</b><small id="home-continue-info"></small></span></button>
+        <button id="home-rules" class="home-btn"><span class="hb-icon">📜</span><span class="hb-text"><b>规则手册</b><small>图文说明 · 一看就懂</small></span></button>
+        <button id="home-codex" class="home-btn"><span class="hb-icon">📚</span><span class="hb-text"><b>丝路百科</b><small>站点 · 名胜 · 高僧 · 六度 · 小词典</small></span></button>
+        <button id="home-honors" class="home-btn"><span class="hb-icon">🏆</span><span class="hb-text"><b>荣誉榜</b><small>历届旅程的精彩记录</small></span></button>
+        <button id="home-settings" class="home-btn"><span class="hb-icon">⚙️</span><span class="hb-text"><b>设置</b><small>声音 · 显示 · 存档 · 地图图层</small></span></button>
+      </nav>
+    </div>
+    <aside class="home-right">
+      <div class="fact-card">
+        <div class="fact-head"><span>📜 丝路小知识</span><button id="fact-next" class="fact-next" title="换一条">换一条 ↻</button></div>
+        <h3 id="fact-title" class="fact-title"></h3>
+        <p id="fact-text" class="fact-text"></p>
+        <div id="fact-foot" class="fact-foot"></div>
+      </div>
+      <div class="home-meta">
+        <div><b>9–12</b><span>岁</span></div>
+        <div><b>10–15</b><span>人</span></div>
+        <div><b>≈30</b><span>分钟</span></div>
+        <div><b>2</b><span>条路线</span></div>
+      </div>
+    </aside>
+  </div>
+  <div class="home-footer">按 F11 或右上角 ⛶ 全屏投影 · 全部离线运行 · 快捷键 R 查看规则</div>
+  <button id="home-fullscreen" class="btn-icon home-fs" title="全屏投影">⛶ 全屏</button>
+</section>
+
+<!-- ===================== 出发准备(设置向导) ===================== -->
+<section id="screen-setup" class="screen">
+  <div class="setup-wrap wizard">
+    <header class="wizard-head">
+      <button id="setup-back-home" class="link-btn">← 主菜单</button>
+      <h1 class="game-title">出发准备</h1>
+      <button id="btn-open-rules-setup" class="link-btn">📜 完整规则</button>
+    </header>
+    <ol class="wizard-steps" id="wizard-steps">
+      <li data-step="1" class="active"><span>1</span>组建队伍</li>
+      <li data-step="2"><span>2</span>旅程设置</li>
+      <li data-step="3"><span>3</span>确认出发</li>
+    </ol>
+
+    <div class="wizard-body">
+      <section class="wizard-page active" data-page="1">
+        <p class="setup-hint">建议 10–15 名学生 → 分成 4–6 组,每组 2–3 人。点击图标或色块可以更换队伍的标志和颜色。</p>
+        <div class="setup-row">
+          <label>队伍数量</label>
+          <div class="setup-row-right">
+            <button id="btn-random-routes" class="chip-btn" type="button">🎲 随机分配路线</button>
+            <div class="stepper">
+              <button id="btn-team-minus" class="btn-round" type="button" aria-label="减少队伍">－</button>
+              <span id="team-count-display">5</span>
+              <button id="btn-team-plus" class="btn-round" type="button" aria-label="增加队伍">＋</button>
+            </div>
+          </div>
+        </div>
+        <div id="team-config-list" class="team-config-list"></div>
+      </section>
+
+      <section class="wizard-page" data-page="2">
+        <div class="option-group">
+          <h3>⏳ 游戏时长 <small>时间到会自动结算,不会拖堂</small></h3>
+          <div class="choice-cards" id="timer-choices"></div>
+        </div>
+        <div class="option-group">
+          <h3>💡 智慧问答出现频率 <small>落地时抽到全班问答的机会</small></h3>
+          <div class="choice-cards" id="qfreq-choices"></div>
+        </div>
+        <div class="option-group option-inline">
+          <div>
+            <h3>🎯 课堂互动挑战</h3>
+            <p class="option-desc">落地时偶尔抽到"分享、表演、安静十五秒"等小挑战,由老师判断是否完成,完成可得功德与对应的六度残页。</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="challenge-toggle" checked><span class="switch-slider"></span></label>
+        </div>
+        <div class="option-group option-inline">
+          <div>
+            <h3>🔊 音效</h3>
+            <p class="option-desc">掷骰、答题、到站都有简短的提示音(可在设置里调节音量)。</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="sound-toggle" checked><span class="switch-slider"></span></label>
+        </div>
+      </section>
+
+      <section class="wizard-page" data-page="3">
+        <div class="confirm-grid">
+          <div class="confirm-map">
+            <svg id="setup-preview-map" viewBox="0 0 1080 640" preserveAspectRatio="xMidYMid meet"></svg>
+            <div class="confirm-map-legend"><span><i class="leg-swatch leg-land"></i>🐫 陆路</span><span><i class="leg-swatch leg-sea"></i>⛵ 海路</span><span>都从长安出发,到那烂陀寺后返回</span></div>
+          </div>
+          <div class="confirm-summary" id="setup-summary"></div>
+        </div>
+        <details class="teacher-notes">
+          <summary>教师速览规则(30 秒版)</summary>
+          <ol>
+            <li>每队轮流经历四个回合阶段:🎲掷骰前进 → ✨机缘触发 → 🛕集市抉择 → ➜回合结束。</li>
+            <li>功德(merit)是分数;六度残页(布施/持戒/忍辱/精进/禅定/般若)是收集品,每种残页的"功德价值"不同,般若最珍贵。</li>
+            <li>集市阶段可以结缘(买/换/兑残页),也可以花功德点亮法灯"占领"一个驿站,之后别队路过都会带来双方随喜功德。</li>
+            <li>先到那烂陀寺"开悟",再返回长安才算"功德圆满"。</li>
+            <li>倒计时结束或功德库耗尽,游戏立即结算;随时可以按 P 暂停,或点击右上角"结束"提前收尾。</li>
+          </ol>
+        </details>
+      </section>
     </div>
 
-    <div id="team-config-list" class="team-config-list"></div>
-
-    <div class="setup-row">
-      <label>游戏时长</label>
-      <select id="timer-select">
-        <option value="20">20 分钟</option>
-        <option value="25">25 分钟</option>
-        <option value="30" selected>30 分钟</option>
-        <option value="35">35 分钟</option>
-      </select>
-    </div>
-
-    <div class="setup-row">
-      <label>音效</label>
-      <label class="switch">
-        <input type="checkbox" id="sound-toggle" checked>
-        <span class="switch-slider"></span>
-      </label>
-    </div>
-
-    <button id="btn-start-game" class="btn-primary btn-big">🪔 开启法路旅程</button>
-    <button id="btn-open-rules-setup" class="btn-secondary btn-big">📜 查看完整规则</button>
-
-    <details class="teacher-notes">
-      <summary>教师速览规则(30 秒版)</summary>
-      <ol>
-        <li>每队轮流经历四个回合阶段:🎲掷骰前进 → ✨机缘触发 → 🛕集市抉择 → ➜回合结束。</li>
-        <li>功德(merit)是分数;六度残页(布施/持戒/忍辱/精进/禅定/般若)是收集品,每种残页的"功德价值"不同,般若最珍贵。</li>
-        <li>集市阶段可以结缘(买/换/兑残页),也可以花功德点亮法灯"占领"一个驿站,之后别队路过都会带来双方随喜功德。</li>
-        <li>先到那烂陀寺"开悟",再返回长安才算"功德圆满"。</li>
-        <li>倒计时结束或功德库耗尽,游戏立即结算,不会拖堂;随时可点击右上角"结束游戏"提前收尾。</li>
-      </ol>
-      <p class="teacher-notes-more">想看图文并茂的完整版?点击上方「📜 查看完整规则」。</p>
-    </details>
+    <footer class="wizard-foot">
+      <button id="wizard-prev" class="btn-ghost" type="button">← 上一步</button>
+      <div class="wizard-dots" id="wizard-dots"><i class="on"></i><i></i><i></i></div>
+      <button id="wizard-next" class="btn-primary" type="button">下一步 →</button>
+      <button id="btn-start-game" class="btn-primary hidden" type="button">🪔 开启法路旅程</button>
+    </footer>
   </div>
 </section>
 
@@ -65,17 +139,21 @@
   <header id="game-header">
     <div class="header-left">
       <span class="title-mini">🪔 丝路法灯</span>
+      <span id="round-chip" class="stat-chip round-chip">第 1 轮</span>
       <span id="phase-banner" class="phase-banner"></span>
     </div>
     <div class="header-mid">
-      <div class="stat-chip">功德库 <b id="bank-display">0</b></div>
+      <div class="stat-chip" title="功德库剩余功德,耗尽时游戏结算">功德库 <b id="bank-display">0</b></div>
       <div class="stat-chip timer-chip" id="timer-chip">⏳ <b id="timer-display">30:00</b></div>
     </div>
     <div class="header-right">
-      <button id="btn-open-rules-game" class="btn-icon" title="查看规则">❓ 规则</button>
+      <button id="btn-stats" class="btn-icon" title="战况看板(快捷键 D)">📊<span class="bi-label"> 战况</span></button>
+      <button id="btn-codex-game" class="btn-icon" title="丝路百科(快捷键 B)">📚<span class="bi-label"> 百科</span></button>
+      <button id="btn-open-rules-game" class="btn-icon" title="查看规则(快捷键 R)">❓<span class="bi-label"> 规则</span></button>
       <button id="btn-mute" class="btn-icon" title="静音切换">🔊</button>
       <button id="btn-fullscreen" class="btn-icon" title="全屏投影">⛶</button>
-      <button id="btn-end-game" class="btn-icon btn-danger" title="结束游戏">🏁 结束</button>
+      <button id="btn-pause" class="btn-icon btn-pause" title="暂停(快捷键 P)">⏸<span class="bi-label"> 暂停</span></button>
+      <button id="btn-end-game" class="btn-icon btn-danger" title="结束游戏">🏁<span class="bi-label"> 结束</span></button>
     </div>
   </header>
 
@@ -99,14 +177,24 @@
       <div id="map-wrap">
         <div id="map-canvas">
           <svg id="map-svg" viewBox="0 0 1080 640" preserveAspectRatio="xMidYMid meet"></svg>
+          <svg id="map-travelers" viewBox="0 0 1080 640" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+          <div id="map-labels" aria-hidden="true"></div>
           <div id="map-markers"></div>
         </div>
+        <div id="turn-splash" class="turn-splash hidden" aria-live="polite"></div>
         <div id="map-toolbar" class="map-toolbar">
-          <button id="btn-zoom-out" class="map-zoom-btn" title="缩小(拉远)">－</button>
+          <button id="btn-zoom-out" class="map-zoom-btn" title="缩小(快捷键 -)">－</button>
           <input id="zoom-slider" type="range" class="zoom-slider" min="0" max="100" value="0" step="1" title="拖动可缩放地图" aria-label="地图缩放">
-          <button id="btn-zoom-in" class="map-zoom-btn" title="放大(拉近)">＋</button>
+          <button id="btn-zoom-in" class="map-zoom-btn" title="放大(快捷键 +)">＋</button>
           <span id="zoom-pct" class="zoom-pct">0%</span>
-          <button id="btn-toggle-map" class="map-toolbar-btn" title="放大整体视图">⤢</button>
+          <span class="tb-sep"></span>
+          <button id="btn-map-focus" class="map-toolbar-btn" title="定位当前队伍(快捷键 F)">🎯</button>
+          <button id="btn-map-layers" class="map-toolbar-btn" title="地图图层">🗂</button>
+          <button id="btn-toggle-map" class="map-toolbar-btn" title="放大整体视图(快捷键 M)">⤢</button>
+        </div>
+        <div id="map-layers" class="map-layers hidden"></div>
+        <div id="minimap" class="minimap" title="鹰眼图:点击或拖动可以快速移动视野">
+          <svg id="minimap-svg" viewBox="0 0 1080 640" preserveAspectRatio="none"></svg>
         </div>
         <div class="map-legend">
           <span><i class="leg-swatch leg-land"></i>🐫 陆路</span>
@@ -115,7 +203,7 @@
           <span>⭐ 剧情</span>
           <span>🪷 终点</span>
           <span>🪔 已点灯</span>
-          <span class="leg-hint">点击站点查看小知识 · 拖动滑块缩放地图,缩放后可按住拖动查看细节 · ⤢ 放大整体视图</span>
+          <span class="leg-hint">点击站点看小知识 · 滚轮/双击放大,放大后可拖动并发现更多名胜 · 🗂 图层</span>
         </div>
       </div>
 
@@ -137,34 +225,179 @@
   </div>
 </section>
 
+<!-- ===================== 结算界面 ===================== -->
+<section id="screen-end" class="screen">
+  <div class="end-wrap">
+    <h1 class="game-title">功德圆满</h1>
+    <p class="end-sub" id="end-sub"></p>
+    <nav class="end-tabs" id="end-tabs">
+      <button class="end-tab-btn active" data-tab="awards">🏆 颁奖台</button>
+      <button class="end-tab-btn" data-tab="data">📈 旅程数据</button>
+      <button class="end-tab-btn" data-tab="quiz">📖 问答回顾</button>
+      <button class="end-tab-btn" data-tab="chronicle">📜 旅程纪事</button>
+    </nav>
+    <div class="end-panels">
+      <section class="end-panel active" data-panel="awards">
+        <div id="podium" class="podium"></div>
+        <div id="results-list"></div>
+        <div id="debrief-box">
+          <h3>课堂讨论小提示</h3>
+          <ul>
+            <li>这次旅程中,哪一道智慧问答让你印象最深?为什么?</li>
+            <li>"六度"里,你觉得自己最擅长哪一项?最想加强哪一项?</li>
+            <li>大乘佛法说"自己觉悟了,还要帮助别人",你能举一个生活中的小例子吗?</li>
+          </ul>
+        </div>
+      </section>
+      <section class="end-panel" data-panel="data">
+        <div id="end-chart" class="chart-box"></div>
+        <div id="end-table-wrap" class="end-table-wrap"></div>
+      </section>
+      <section class="end-panel" data-panel="quiz"><div id="end-quiz"></div></section>
+      <section class="end-panel" data-panel="chronicle"><div id="end-chronicle" class="chronicle"></div></section>
+    </div>
+    <div class="end-actions">
+      <button id="btn-print-cert" class="btn-ghost">🖨️ 打印奖状</button>
+      <button id="btn-end-setup" class="btn-ghost">⚙️ 重新设置</button>
+      <button id="btn-end-home" class="btn-ghost">🏠 主菜单</button>
+      <button id="btn-restart" class="btn-primary">🔄 同样的队伍再来一局</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 丝路百科 ===================== -->
+<section id="screen-codex" class="screen">
+  <header class="page-head">
+    <button id="codex-back" class="btn-icon">← 返回</button>
+    <h1>📚 丝路百科</h1>
+    <nav class="codex-tabs" id="codex-tabs">
+      <button class="codex-tab-btn active" data-tab="stations">🗺️ 丝路站点</button>
+      <button class="codex-tab-btn" data-tab="landmarks">🏛️ 名胜古迹</button>
+      <button class="codex-tab-btn" data-tab="figures">👤 求法高僧</button>
+      <button class="codex-tab-btn" data-tab="paramitas">🎴 六度</button>
+      <button class="codex-tab-btn" data-tab="glossary">📖 小词典</button>
+    </nav>
+  </header>
+  <div class="codex-body">
+    <aside class="codex-list-wrap">
+      <input id="codex-search" class="codex-search" type="search" placeholder="🔍 搜索…" aria-label="搜索百科">
+      <div id="codex-list" class="codex-list"></div>
+    </aside>
+    <article id="codex-detail" class="codex-detail"></article>
+  </div>
+</section>
+
+<!-- ===================== 荣誉榜 ===================== -->
+<section id="screen-honors" class="screen">
+  <header class="page-head">
+    <button id="honors-back" class="btn-icon">← 主菜单</button>
+    <h1>🏆 荣誉榜</h1>
+    <button id="honors-clear" class="btn-icon btn-danger">🗑 清空记录</button>
+  </header>
+  <div class="honors-body">
+    <div id="honors-summary" class="honors-summary"></div>
+    <div id="honors-list" class="honors-list"></div>
+  </div>
+</section>
+
+<!-- ===================== 站点小知识提示框 ===================== -->
 <div id="station-tooltip" class="hidden">
   <button class="st-tip-close" aria-label="关闭">×</button>
   <span class="st-tip-type"></span>
   <h4 class="st-tip-title"></h4>
   <p class="st-tip-body"></p>
   <div class="st-tip-offers hidden"></div>
+  <button class="st-tip-more" type="button">📖 在丝路百科中查看</button>
 </div>
 
-<!-- ===================== 结算界面 ===================== -->
-<section id="screen-end" class="screen">
-  <div class="end-wrap">
-    <h1 class="game-title">功德圆满</h1>
-    <div id="results-list"></div>
-    <div id="debrief-box">
-      <h3>课堂讨论小提示</h3>
-      <ul>
-        <li>这次旅程中,哪一道智慧问答让你印象最深?为什么?</li>
-        <li>"六度"里,你觉得自己最擅长哪一项?最想加强哪一项?</li>
-        <li>大乘佛法说"自己觉悟了,还要帮助别人",你能举一个生活中的小例子吗?</li>
-      </ul>
-    </div>
-    <button id="btn-restart" class="btn-primary btn-big">🔄 再玩一次</button>
-  </div>
-</section>
-
-<!-- ===================== 弹窗 ===================== -->
+<!-- ===================== 游戏弹窗 ===================== -->
 <div id="modal-overlay" class="modal-overlay hidden">
   <div id="modal-box" class="modal-box"></div>
+</div>
+
+<!-- ===================== 暂停菜单 ===================== -->
+<div id="pause-overlay" class="sheet-overlay pause-overlay hidden">
+  <div class="pause-box">
+    <div class="pause-icon">⏸</div>
+    <h2>旅程暂停</h2>
+    <p class="pause-sub" id="pause-sub"></p>
+    <div class="pause-menu">
+      <button id="pause-resume" class="home-btn primary"><span class="hb-icon">▶</span><span class="hb-text"><b>继续旅程</b></span></button>
+      <button id="pause-stats" class="home-btn"><span class="hb-icon">📊</span><span class="hb-text"><b>战况看板</b></span></button>
+      <button id="pause-rules" class="home-btn"><span class="hb-icon">📜</span><span class="hb-text"><b>规则手册</b></span></button>
+      <button id="pause-codex" class="home-btn"><span class="hb-icon">📚</span><span class="hb-text"><b>丝路百科</b></span></button>
+      <button id="pause-settings" class="home-btn"><span class="hb-icon">⚙️</span><span class="hb-text"><b>设置</b></span></button>
+      <button id="pause-save-exit" class="home-btn"><span class="hb-icon">💾</span><span class="hb-text"><b>保存并回主菜单</b></span></button>
+      <button id="pause-end" class="home-btn danger"><span class="hb-icon">🏁</span><span class="hb-text"><b>结束并结算</b></span></button>
+    </div>
+    <div class="pause-keys">
+      <b>快捷键</b> 空格 掷骰 · Enter 确认 · 1–4 答题 · P 暂停 · D 战况 · B 百科 · R 规则 · M 放大地图 · F 定位当前队伍 · + / − 缩放 · 方向键 平移
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 战况看板 ===================== -->
+<div id="stats-overlay" class="sheet-overlay hidden">
+  <div class="sheet-box stats-box">
+    <div class="sheet-head">
+      <h2>📊 战况看板</h2>
+      <span class="sheet-sub" id="stats-sub"></span>
+      <button class="btn-icon sheet-close" data-close="stats-overlay">✕ 关闭</button>
+    </div>
+    <div class="sheet-body stats-grid">
+      <section class="stats-card"><h3>🏆 实时排名 <small>功德 + 残页价值</small></h3><div id="stats-ranking"></div></section>
+      <section class="stats-card"><h3>📈 总功德走势 <small>每轮结束时</small></h3><div id="stats-trend" class="chart-box"></div></section>
+      <section class="stats-card"><h3>🎴 六度收集</h3><div id="stats-collection"></div></section>
+      <section class="stats-card"><h3>🧭 全班旅程</h3><div id="stats-class"></div></section>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 设置 ===================== -->
+<div id="settings-overlay" class="sheet-overlay hidden">
+  <div class="sheet-box settings-box">
+    <div class="sheet-head">
+      <h2>⚙️ 设置</h2>
+      <span class="sheet-sub">设置会自动保存在这台电脑上</span>
+      <button class="btn-icon sheet-close" data-close="settings-overlay">✕ 关闭</button>
+    </div>
+    <div class="sheet-body settings-body">
+      <div class="set-group">
+        <h3>🔊 声音</h3>
+        <label class="set-row"><span>音效</span><span class="switch"><input type="checkbox" id="set-sound"><span class="switch-slider"></span></span></label>
+        <label class="set-row"><span>音量</span><input type="range" id="set-volume" min="0" max="100" step="5" class="set-range"></label>
+        <label class="set-row"><span>背景古琴音乐<small>悠扬的五声音阶,轻柔不打扰</small></span><span class="switch"><input type="checkbox" id="set-music"><span class="switch-slider"></span></span></label>
+      </div>
+      <div class="set-group">
+        <h3>🖥️ 显示</h3>
+        <label class="set-row"><span>投影大字模式<small>放大侧栏、弹窗与按钮文字,后排也看得清</small></span><span class="switch"><input type="checkbox" id="set-bigtext"><span class="switch-slider"></span></span></label>
+        <label class="set-row"><span>地图动画<small>商队、船只、云朵与航线流动效果</small></span><span class="switch"><input type="checkbox" id="set-motion"><span class="switch-slider"></span></span></label>
+        <label class="set-row"><span>回合开始横幅<small>每轮到一队时,地图上显示"轮到某队"</small></span><span class="switch"><input type="checkbox" id="set-splash"><span class="switch-slider"></span></span></label>
+      </div>
+      <div class="set-group">
+        <h3>💾 存档</h3>
+        <label class="set-row"><span>每回合自动存档<small>意外关闭页面后,可在主菜单"继续上次旅程"</small></span><span class="switch"><input type="checkbox" id="set-autosave"><span class="switch-slider"></span></span></label>
+        <div class="set-row"><span>清除存档与荣誉榜<small>只影响这台电脑</small></span><button id="set-clear-data" class="chip-btn danger" type="button">清除数据</button></div>
+      </div>
+      <div class="set-group">
+        <h3>🗺️ 地图图层</h3>
+        <div id="set-layers" class="set-layers"></div>
+      </div>
+      <div class="set-foot"><button id="set-reset" class="link-btn" type="button">恢复默认设置</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 通用确认框 ===================== -->
+<div id="confirm-overlay" class="sheet-overlay confirm-overlay hidden">
+  <div class="confirm-box" role="dialog" aria-modal="true">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-text"></p>
+    <div class="modal-buttons">
+      <button id="confirm-cancel" class="btn-ghost" type="button">取消</button>
+      <button id="confirm-ok" class="btn-primary" type="button">确定</button>
+    </div>
+  </div>
 </div>
 
 <!-- ===================== 规则手册(菜单式说明页) ===================== -->
@@ -181,6 +414,7 @@
         <button class="rules-tab-btn" data-tab="map">🗺️<span>地图与站点</span></button>
         <button class="rules-tab-btn" data-tab="items">🎴<span>六度残页</span></button>
         <button class="rules-tab-btn" data-tab="market">🛕<span>集市与点灯</span></button>
+        <button class="rules-tab-btn" data-tab="class">🎯<span>问答与挑战</span></button>
         <button class="rules-tab-btn" data-tab="score">🏆<span>计分与奖项</span></button>
       </nav>
       <div class="rules-panel">
@@ -189,7 +423,7 @@
           <h3>🎯 游戏目标</h3>
           <p>全班分组扮演求法商队,沿着 🐫陆路 或 ⛵海路 前往天竺的那烂陀寺"取经开悟",再平安返回长安才算"功德圆满"。</p>
           <ul class="rules-list">
-            <li>倒计时结束、功德库耗尽,或老师点击「结束游戏」,立即结算,不会拖堂。</li>
+            <li>倒计时结束、功德库耗尽,或老师点击「结束」,立即结算,不会拖堂。</li>
             <li>最终比较每队的<b>总功德</b>(手中功德 + 残页价值),排名之外,还会颁发好几项趣味称号——人人都有收获。</li>
             <li>这不是比谁最"凶",而是比谁在旅途中修得更用心、学得更多。</li>
           </ul>
@@ -197,25 +431,27 @@
 
         <section class="rules-section" data-panel="phases">
           <h3>🔄 回合流程(像大富翁一样,一回合分四步)</h3>
-          <p>每一队的回合都会经历下面四个阶段,屏幕上方的进度条会实时显示当前在哪一步:</p>
+          <p>每一队的回合都会经历下面四个阶段,屏幕上的进度条会实时显示当前在哪一步:</p>
           <ol class="rules-steps">
-            <li><b>① 🎲 掷骰前进</b> —— 点击「掷骰子」,商队沿骆驼🐫或商船⛵的路线前进相应的站数。</li>
-            <li><b>② ✨ 机缘触发</b> —— 落地后随机抽到一张<b>机缘卡</b>(善缘加分 / 小考验,都附正向引导语)、一道全班作答的<b>智慧问答</b>,或固定的<b>剧情</b>。</li>
+            <li><b>① 🎲 掷骰前进</b> —— 点击「掷骰子」(或按空格),商队沿骆驼🐫或商船⛵的路线前进相应的站数。</li>
+            <li><b>② ✨ 机缘触发</b> —— 落地后随机抽到一张<b>机缘卡</b>、一道全班作答的<b>智慧问答</b>、一个<b>课堂挑战</b>,或固定的<b>剧情</b>。</li>
             <li><b>③ 🛕 集市抉择</b> —— 有站点可以选择:前往圣地<b>结缘</b>(买/换/兑残页)、花功德<b>点亮法灯</b>、或在敦煌/交趾<b>换乘</b>路线;也可以什么都不做,直接结束回合。</li>
-            <li><b>④ ➜ 回合结束</b> —— 点击「下一队」,轮到下一组操作。</li>
+            <li><b>④ ➜ 回合结束</b> —— 点击「下一队」,轮到下一组操作。所有队伍都走过一次,就进入下一"轮"。</li>
           </ol>
+          <p class="rules-note">需要停下来讨论?按 P 或点击右上角「⏸ 暂停」,倒计时会同时停止。</p>
         </section>
 
         <section class="rules-section" data-panel="map">
           <h3>🗺️ 地图与站点</h3>
           <p>地图上一共有四种站点,点击任意站点图标都能看到一句历史小知识:</p>
           <ul class="rules-list">
-            <li>📍 <b>普通驿站</b>——抵达后随机触发机缘卡或智慧问答。</li>
-            <li>🛕 <b>圣地</b>——除了机缘卡/问答,还能进行「结缘」交易,点灯花费也更高(人气更旺)。</li>
+            <li>📍 <b>普通驿站</b>——抵达后随机触发机缘卡、智慧问答或课堂挑战。</li>
+            <li>🛕 <b>圣地</b>——除了抽卡,还能进行「结缘」交易,点灯花费也更高(人气更旺)。</li>
             <li>⭐ <b>剧情站</b>——触发固定的历史小故事(如高昌王资助、楼兰遗梦),奖励固定。</li>
             <li>🪷 <b>终点·那烂陀寺</b>——陆路、海路在此汇合;第一次抵达会自动调头,踏上归途。</li>
             <li>⇄ <b>换乘点</b>(敦煌 / 交趾)——每队限一次,可由陆路改海路(或反向)。</li>
           </ul>
+          <p>用滚轮、双击或右上角的滑块<b>放大地图</b>,会出现更多小地名、河流名称和可以点击的<b>名胜古迹</b>;红色点线是玄奘当年真实走过的路线。🎯 按钮(快捷键 F)可以一键找到当前队伍。</p>
         </section>
 
         <section class="rules-section" data-panel="items">
@@ -231,10 +467,19 @@
           <ul class="rules-list">
             <li><b>功德换法</b>——花功德买一张残页(每种残页价格不同)。</li>
             <li><b>以法结缘</b>——用自己的残页 1:1 换取想要的残页,不分价值,重在结缘。</li>
-            <li><b>译讲弘法</b>——把残页兑换回功德,集齐六度还有额外奖励。</li>
+            <li><b>译讲弘法</b>——把残页兑换回功德(可以一张一张兑,也可以全部兑换),集齐六度还有额外奖励。</li>
           </ul>
           <p><b>点亮法灯</b> 🪔(像大富翁"买地",但奖励是双向、正向的):</p>
           <ul class="rules-list" id="rules-lamp-list"></ul>
+        </section>
+
+        <section class="rules-section" data-panel="class">
+          <h3>🎯 智慧问答 与 课堂挑战</h3>
+          <ul class="rules-list">
+            <li><b>智慧问答</b>——全班一起讨论,由当前队伍作答(也可以按键盘 1–4)。答对该队 +4 功德、其他队各 +1;答错全班每队也有 +1 随喜功德。选项顺序每次都会打乱。</li>
+            <li><b>课堂挑战</b>——比如"说一件帮助别人的小事""全班安静十五秒"。由老师判断是否完成,完成可得 <b id="rules-challenge-reward">3</b> 点功德和一张对应的六度残页;也可以选择跳过。可在出发准备第二步里关闭。</li>
+            <li>结算页的「问答回顾」会列出本局出现过的所有题目和解析,方便课后复习。</li>
+          </ul>
         </section>
 
         <section class="rules-section" data-panel="score">
@@ -245,10 +490,12 @@
             <li>💡 智慧奖——答对智慧问答最多的队伍。</li>
             <li>🔥 精进奖——掷骰回合数最多、最努力前进的队伍。</li>
             <li>🪔 点灯奖——点亮法灯最多的队伍。</li>
+            <li>🎯 互动之星——完成课堂挑战最多的队伍。</li>
             <li>🌸 圆满奖——完成往返、回到长安的队伍。</li>
             <li>🌿 毅力奖——给予排名最后一队的鼓励称号。</li>
+            <li>还没有称号的队伍,会按它最突出的表现获得"课堂之星""好学奖""护灯人""集卡达人""丝路行者"等称号。</li>
           </ul>
-          <p class="rules-note">每队至少能拿到一项称号,重在参与、正向鼓励。</p>
+          <p class="rules-note">每队至少能拿到一项称号,重在参与、正向鼓励。结算页可以一键打印奖状,并自动记入「荣誉榜」。</p>
         </section>
 
       </div>
@@ -256,11 +503,19 @@
   </div>
 </div>
 
+<div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+<div id="print-area" class="print-area"></div>
+
 <script src="js/data.js"></script>
+<script src="js/lore.js"></script>
+<script src="js/store.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/game.js"></script>
+<script src="js/mapart.js"></script>
 <script src="js/map.js"></script>
+<script src="js/charts.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/screens.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
