@@ -1398,3 +1398,8 @@ body.big-text .toast { font-size: 17px; }
 .ml.rose-label { color: #5a4a30; font-weight: bold; }
 .ml.rose-main { color: #b2503b; }
 .lbl-huanghe { fill: #8a6424; }
+
+/* 自动存档提示:每回合开始保存成功时短暂亮起 */
+.save-chip { font-size: 13px; color: var(--gold-light); opacity: 0; transition: opacity .4s; white-space: nowrap; }
+.save-chip.show { opacity: .9; }
+@media (max-width: 1280px) { .save-chip { display: none; } }

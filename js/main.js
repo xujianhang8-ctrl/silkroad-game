@@ -31,7 +31,10 @@ var DR = window.DR || (window.DR = {});
     }
     if (state.timerSeconds <= 0) {
       DR.UI.finishGame('timeup');
+      return;
     }
+    // 每走 10 秒同步一次存档里的剩余时间,继续游戏时不会把已经用掉的时间"退回来"
+    if (state.timerSeconds % 10 === 0) persistSnapshot(false, false);
   }
 
   function startTimer() {
@@ -40,16 +43,31 @@ var DR = window.DR || (window.DR = {});
   }
 
   // ---------------- 存档快照 ----------------
+  // 存档内容 = 本回合开始时的局面 + 当前剩余时间(回合进行到一半时的抽卡/交易不会被存成"半截")
+  function persistSnapshot(force, announce) {
+    const state = DR.state;
+    if (!state || state.phase === 'ended') return false;
+    if (!lastTurnSnapshot) lastTurnSnapshot = DR.Game.serialize(state);
+    lastTurnSnapshot.timerSeconds = state.timerSeconds;
+    lastTurnSnapshot.sprintActive = state.sprintActive;
+    const ok = DR.Store.writeSnapshot(lastTurnSnapshot, DR.setup, force);
+    if (ok && announce) flashSaved();
+    return ok;
+  }
+  let savedTimer = null;
+  function flashSaved() {
+    const chip = $('save-chip');
+    if (!chip) return;
+    chip.classList.add('show');
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => chip.classList.remove('show'), 1800);
+  }
   DR.captureTurnSnapshot = function (state) {
     lastTurnSnapshot = DR.Game.serialize(state);
-    DR.Store.writeSnapshot(lastTurnSnapshot, DR.setup, false);
+    persistSnapshot(false, true);
   };
-  // "保存并回主菜单":无论是否开启自动存档,都把本回合开始时的快照写入存档
-  DR.saveTurnSnapshot = function () {
-    if (DR.state && DR.state.phase !== 'ended') {
-      DR.Store.writeSnapshot(lastTurnSnapshot || DR.Game.serialize(DR.state), DR.setup, true);
-    }
-  };
+  // "保存并回主菜单":无论是否开启自动存档,都写入存档
+  DR.saveTurnSnapshot = function () { persistSnapshot(true, false); };
 
   // ---------------- 开局 / 读档 ----------------
   function enterGame(state, opts) {
@@ -221,8 +239,14 @@ var DR = window.DR || (window.DR = {});
     window.addEventListener('resize', () => {
       if (DR.state && DR.Screens.activeScreenId() === 'screen-game') DR.Map.fitMapBox();
     });
+    // 关闭/刷新页面、切到后台时再存一次,保证剩余时间是最新的
+    const persistIfPlaying = () => {
+      if (DR.Screens.activeScreenId() === 'screen-game') persistSnapshot(false, false);
+    };
+    window.addEventListener('pagehide', persistIfPlaying);
     // 切到别的浏览器标签页时自动暂停,回来时不会发现时间悄悄跑完了
     document.addEventListener('visibilitychange', () => {
+      if (document.hidden) persistIfPlaying();
       if (document.hidden && DR.state && DR.state.phase !== 'ended' && DR.Screens.activeScreenId() === 'screen-game' && !DR.Screens.paused) {
         DR.Screens.pauseGame();
       }
