@@ -804,6 +804,7 @@ DR.Map = {
   zoomBy,
   panBy,
   coordFor,
+  iconFor: iconForStation,
   layoutStationLabels: scheduleLabelLayout,
   get zoomed() { return mapScale > 1.001; },
 };

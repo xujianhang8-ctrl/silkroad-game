@@ -40,7 +40,7 @@
       <div class="home-meta">
         <div><b>9–12</b><span>岁</span></div>
         <div><b>10–15</b><span>人</span></div>
-        <div><b>≈30</b><span>分钟</span></div>
+        <div><b>不限</b><span>时长</span></div>
         <div><b>2</b><span>条路线</span></div>
       </div>
     </aside>
@@ -82,12 +82,12 @@
 
       <section class="wizard-page" data-page="2">
         <div class="option-group">
-          <h3>⏳ 游戏时长 <small>时间到会自动结算,不会拖堂</small></h3>
-          <div class="choice-cards" id="timer-choices"></div>
-        </div>
-        <div class="option-group">
           <h3>🏘️ 旅程长度 <small>每两座城之间随机加入几个小村落歇脚点,路更长、游戏更久</small></h3>
           <div class="choice-cards" id="journey-choices"></div>
+        </div>
+        <div class="option-group">
+          <h3>🏁 什么时候结算 <small>游戏不限时,老师也可以随时点「结束」;预计用时按每回合约 40 秒估算</small></h3>
+          <div class="choice-cards" id="endmode-choices"></div>
         </div>
         <div class="option-group">
           <h3>💡 智慧问答出现频率 <small>落地时抽到全班问答的机会</small></h3>
@@ -123,8 +123,8 @@
             <li>每队轮流经历四个回合阶段:🎲掷骰前进 → ✨机缘触发 → 🛕集市抉择 → ➜回合结束。</li>
             <li>功德(merit)是分数;六度残页(布施/持戒/忍辱/精进/禅定/般若)是收集品,每种残页的"功德价值"不同,般若最珍贵。</li>
             <li>集市阶段可以结缘(买/换/兑残页),也可以花功德点亮法灯"占领"一个驿站,之后别队停在这里都会带来双方随喜功德。</li>
-            <li>先到那烂陀寺"开悟",再返回长安才算"功德圆满"。</li>
-            <li>倒计时结束或功德库耗尽,游戏立即结算;随时可以按 P 暂停,或点击右上角"结束"提前收尾。</li>
+            <li>先到那烂陀寺"开悟",再返回长安才算"功德圆满"。城与城之间有小村落(只是歇脚);掷骰路过城市时,可以选择进城停留。</li>
+            <li>不限时:第一队(或所有队伍)回到长安时结算;中途可以按 P 暂停,或点击右上角"结束"随时收尾。进度会自动存档,下节课可以接着玩。</li>
           </ol>
         </details>
       </section>
@@ -149,7 +149,7 @@
     </div>
     <div class="header-mid">
       <div class="stat-chip" title="功德库剩余功德,耗尽时游戏结算">功德库 <b id="bank-display">0</b></div>
-      <div class="stat-chip timer-chip" id="timer-chip">⏳ <b id="timer-display">30:00</b></div>
+      <div class="stat-chip timer-chip" id="timer-chip" title="本局已用时间(不限时,暂停时不计)">⏱ <b id="timer-display">0:00</b></div>
       <span id="save-chip" class="save-chip" title="每回合开始时自动存档,可在主菜单继续">💾 已自动保存</span>
     </div>
     <div class="header-right">
@@ -446,7 +446,7 @@
           <h3>🎯 游戏目标</h3>
           <p>全班分组扮演求法商队,沿着 🐫陆路 或 ⛵海路 前往天竺的那烂陀寺"取经开悟",再平安返回长安才算"功德圆满"。</p>
           <ul class="rules-list">
-            <li>倒计时结束、功德库耗尽,或老师点击「结束」,立即结算,不会拖堂。</li>
+            <li>游戏不限时。按出发准备里的选择,<b>第一队回到长安</b>(打完那一轮)或<b>所有队伍都回到长安</b>时结算;老师也可以随时点「结束」。进度每回合自动存档,一节课玩不完,下节课可以在主菜单「继续上次旅程」。</li>
             <li>最终比较每队的<b>总功德</b>(手中功德 + 残页价值),排名之外,还会颁发好几项趣味称号——人人都有收获。</li>
             <li>这不是比谁最"凶",而是比谁在旅途中修得更用心、学得更多。</li>
           </ul>
@@ -456,12 +456,12 @@
           <h3>🔄 回合流程(像大富翁一样,一回合分四步)</h3>
           <p>每一队的回合都会经历下面四个阶段,屏幕上的进度条会实时显示当前在哪一步:</p>
           <ol class="rules-steps">
-            <li><b>① 🎲 掷骰前进</b> —— 点击「掷骰子」(或按空格),商队沿骆驼🐫或商船⛵的路线前进相应的站数。</li>
+            <li><b>① 🎲 掷骰前进</b> —— 点击「掷骰子」(或按空格),商队沿骆驼🐫或商船⛵的路线前进相应的步数。如果这次会<b>路过城市</b>,可以选择<b>进城停留</b>(提前停下),不会因为点数太大错过想去的城市;停在沿途<b>村落</b>只是歇脚。</li>
             <li><b>② ✨ 机缘触发</b> —— 落地后随机抽到一张<b>机缘卡</b>、一道全班作答的<b>智慧问答</b>、一个<b>课堂挑战</b>,或固定的<b>剧情</b>。</li>
             <li><b>③ 🛕 集市抉择</b> —— 有站点可以选择:前往圣地<b>结缘</b>(买/换/兑残页)、花功德<b>点亮法灯</b>、或在敦煌/交趾<b>换乘</b>路线;也可以什么都不做,直接结束回合。</li>
             <li><b>④ ➜ 回合结束</b> —— 点击「下一队」,轮到下一组操作。所有队伍都走过一次,就进入下一"轮"。</li>
           </ol>
-          <p class="rules-note">需要停下来讨论?按 P 或点击右上角「⏸ 暂停」,倒计时会同时停止。</p>
+          <p class="rules-note">需要停下来讨论?按 P 或点击右上角「⏸ 暂停」,右上角的用时也会暂停。</p>
         </section>
 
         <section class="rules-section" data-panel="map">

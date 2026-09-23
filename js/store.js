@@ -74,7 +74,7 @@ function peekSave() {
   return {
     savedAt: data.savedAt,
     round: st.round || 1,
-    timerSeconds: st.timerSeconds,
+    elapsedSeconds: st.elapsedSeconds != null ? st.elapsedSeconds : Math.max(0, (st.totalSeconds || 0) - (st.timerSeconds || 0)),
     teams: st.teams.map(t => ({ name: t.name, icon: t.icon, color: t.color })),
     active: st.teams[st.activeIndex || 0],
   };

@@ -7,8 +7,8 @@ var DR = window.DR || (window.DR = {});
 DR.CONFIG = {
   diceSides: 6,
   startMerit: 10,
-  bankTotal: 260,        // 功德库下限;实际大小 = 每分钟 bankPerMinute × 游戏时长(见 game.js)
-  bankPerMinute: 12,     // 让功德库大致撑满整节课,游戏由倒计时收尾,而不是功德库提前耗尽
+  bankTotal: 260,        // 功德库下限;实际大小按旅程长度与队伍数计算(见 game.js 的 bankFor)
+  bankPerTeamTurn: 9,    // 每队每回合预留的功德:让功德库撑到大家回到长安
   backpackCapacityBase: 4,
   backpackCapacityUpgraded: 6, // 行囊扩充后的容量(高昌 / 真腊的剧情、"行囊"机缘卡、抵达那烂陀寺都会扩充)
   fullSetBonus: 10,      // 集齐六度额外奖励
@@ -17,8 +17,7 @@ DR.CONFIG = {
   questionChance: 0.35,  // 落地时抽到"智慧问答"而非事件卡的概率(设置向导里可选 少/标准/多)
   challengeChance: 0.12, // 开启"课堂互动挑战"时,落地抽到挑战卡的概率
   challengeReward: 3,    // 完成课堂挑战获得的功德(另得一张对应的六度残页)
-  defaultTimerMinutes: 30,
-  sprintMinutesLeft: 5,  // 剩余多少分钟时进入"冲刺阶段"(骰子 +1)
+  secondsPerTurn: 40,    // 估算课堂用时:平均每回合约 40 秒(掷骰、讨论、读卡)
   soundDefault: true,
 
   // ---- 驿站点灯(结缘市集玩法)----
@@ -182,9 +181,16 @@ DR.SEA_PATH = [
 // 让旅程更长。村落只是歇脚点:停在村落不抽卡、不答题,直接轮到下一队。
 // 村名由"前缀 + 后缀"随机组合,每局都不一样。
 DR.JOURNEY_LENGTHS = [
-  { key: 'short',  label: '短途', sub: '不加村落', min: 0, max: 0 },
-  { key: 'normal', label: '标准', sub: '每段 1–2 个村落', min: 1, max: 2 },
-  { key: 'long',   label: '长途', sub: '每段 2–4 个村落', min: 2, max: 4 },
+  // 以下数字来自上千局模拟:turns = 全部回到长安大约要几轮(用来配置功德库);
+  // play = 每队平均真正掷骰的回合数(first:第一队回来就结束 / all:全部回来),用来估算课堂用时。
+  { key: 'short',  label: '短途', sub: '不加村落',        min: 0, max: 0, turns: 19, play: { first: 11, all: 14 } },
+  { key: 'normal', label: '标准', sub: '每段 1–2 个村落', min: 1, max: 2, turns: 37, play: { first: 23, all: 30 } },
+  { key: 'long',   label: '长途', sub: '每段 2–4 个村落', min: 2, max: 4, turns: 55, play: { first: 35, all: 45 } },
+];
+// 游戏怎样结束(没有倒计时;老师随时可以点"结束"提前结算)
+DR.END_MODES = [
+  { key: 'first', label: '第一队回到长安', sub: '打完这一轮就结算 · 较快' },
+  { key: 'all',   label: '所有队伍都回到长安', sub: '每队都能完成往返 · 较久' },
 ];
 DR.VILLAGE_NAME_PARTS = {
   land: {

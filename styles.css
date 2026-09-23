@@ -1428,3 +1428,16 @@ body.big-text .toast { font-size: 17px; }
   white-space: nowrap; display: none; pointer-events: none;
 }
 #map-wrap[data-lod="2"] .village-marker .vm-label, .village-marker:hover .vm-label { display: block; }
+
+.choice-card .cc-time { font-style: normal; font-weight: 700; color: var(--terracotta, #b2503b); }
+/* 路过城市时的"进城停留"选择 */
+.stop-options { display: grid; gap: 8px; margin: 14px 0 6px; }
+.stop-btn {
+  display: flex; align-items: center; gap: 12px; text-align: left; width: 100%;
+  padding: 10px 14px; border-radius: 12px; border: 2px solid #d9c49a; background: #fffaf0; cursor: pointer;
+  font: inherit; color: #2c2418; transition: border-color .15s, transform .15s;
+}
+.stop-btn:hover, .stop-btn:focus-visible { border-color: var(--gold); transform: translateX(3px); outline: none; }
+.stop-btn .stop-icon { font-size: 26px; }
+.stop-btn b { display: block; font-size: 18px; }
+.stop-btn small { color: #6d5d44; }

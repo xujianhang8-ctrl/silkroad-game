@@ -88,7 +88,7 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
 
   // ---------- prepare a game (5 default teams: land/sea alternating) ----------
   await p.click('#home-new'); await p.waitForTimeout(300);
-  await p.evaluate(() => { DR.setup.teams = DR.setup.teams.slice(0, 4); });
+  await p.evaluate(() => { DR.setup.teams = DR.setup.teams.slice(0, 4); DR.setup.journey = 'long'; DR.setup.endMode = 'first'; });
   await p.evaluate(() => { document.getElementById('wizard-next').click(); document.getElementById('wizard-next').click(); });
   await p.waitForTimeout(300);
   await p.evaluate(() => document.getElementById('btn-start-game').click());
@@ -108,6 +108,12 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
     await ev(([x, y]) => VX.ripple(x, y), xy);
     await loc.click();
   }
+  // 第 n 座城在本局棋盘上的位置(1 起算;村落每局随机,所以要现算)
+  const cityPos = (route, n) => ev(([r, k]) => {
+    let c = 0; const path = DR.Game.path(r);
+    for (let i = 0; i < path.length; i++) if (path[i].type !== 'village' && ++c === k) return i + 1;
+    return 1;
+  }, [route, n]);
   const force = opts => ev(o => Object.assign(DR.state.options, o), opts);
   const pushCard = (deck, title) => ev(([d, t]) => {
     const src = d === 'land' ? DR.LAND_EVENTS : DR.SEA_EVENTS;
@@ -146,17 +152,18 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
     },
     async setup() {
       await ev(() => { VX.spot(null); DR.UI.toggleMapExpand(false); DR.Screens.openSetup(); });
-      await sleep(1500);
+      await sleep(1200);
       await ev(() => VX.spot('#team-config-list', 10));
       await sleep(3600);
       await ev(() => VX.spot(null));
       await click('#wizard-next');
-      await sleep(2300);
-      await click('#wizard-next');
-      await sleep(1000);
+      await sleep(600);
+      await ev(() => VX.spot('#journey-choices', 8));
+      await sleep(3800);
+      await ev(() => VX.spot('#endmode-choices', 8));
     },
     async screen() {
-      await ev(() => { VX.hideCursor(); DR.UI.showScreen('screen-game'); DR.Map.fitMapBox(); DR.UI.hideTurnSplash(); });
+      await ev(() => { VX.spot(null); VX.hideCursor(); DR.UI.showScreen('screen-game'); DR.Map.fitMapBox(); DR.UI.hideTurnSplash(); });
       await sleep(500);
       await ev(() => VX.spot('.header-mid', 8)); await sleep(1900);
       await ev(() => VX.spot('#side-panel', 4)); await sleep(1900);
@@ -170,11 +177,17 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
       await ev(() => VX.spot('#dice-area', 10));
       await force({ questionChance: 0, challenges: false });
       await pushCard('land', '迷路小插曲');
-      await ev(() => { window.__nextRoll = 2; });
+      // 掷出的点数正好越过第一座城,演示"进城停留"的选择
+      const first = await cityPos('land', 1);
+      await ev(n => { window.__nextRoll = n; }, Math.min(6, first + 1));
       await sleep(1500);
       await click('#btn-roll');
       await ev(() => VX.spot(null));
-      await sleep(1800);
+      await sleep(1400);
+      await ev(() => VX.spot('#modal-box', 6));
+      await sleep(sceneLen('roll') * 1000 - 7200);
+      await ev(() => VX.spot(null));
+      await click('.stop-btn');
       await ev(() => VX.hideCursor());
     },
     async card() {
@@ -186,7 +199,7 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
     },
     async question() {
       await force({ questionChance: 1, challenges: false });
-      await ev(() => { window.__nextRoll = 2; });
+      await ev(n => { window.__nextRoll = n; }, await cityPos('sea', 1));
       await click('#btn-next-team');
       await sleep(900);
       await click('#btn-roll');
@@ -199,7 +212,7 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
     async challenge() {
       await click('#modal-confirm-btn');
       await force({ questionChance: 0, challenges: true, challengeChance: 1 });
-      await ev(() => { window.__nextRoll = 1; });
+      await ev(n => { window.__nextRoll = n; }, await cityPos('land', 1));
       await click('#btn-next-team');
       await sleep(800);
       await click('#btn-roll');
@@ -222,7 +235,12 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
       // 下一队(海路)上场,掷到占婆圣地
       await force({ questionChance: 0, challenges: false });
       await pushCard('sea', '渔民相助');
-      await ev(() => { const t = DR.state.teams[3]; t.backpack.dana = 1; t.backpack.sila = 1; window.__nextRoll = 4; });
+      // 第四队停在占婆(圣地)旁边的村落,掷 1 进城
+      await ev(() => {
+        const t = DR.state.teams[3]; t.backpack.dana = 1; t.backpack.sila = 1;
+        t.position = DR.Game.path('sea').findIndex(x => x.name === '占婆'); DR.Map.initTokens(DR.state);
+        window.__nextRoll = 1;
+      });
       await click('#btn-next-team');
       await sleep(700);
       await click('#btn-roll');
@@ -251,18 +269,18 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
       await sleep(700);
       await click('#action-area .action-btn:has-text("点亮法灯")');
       await sleep(900);
-      await ev(() => { VX.hideCursor(); VX.spot('.station-marker[data-route="sea"][data-pos="4"]', 18); });
+      await ev(() => { VX.hideCursor(); VX.spot('.station-marker.lit', 18); });
     },
     async journey() {
       await ev(() => { VX.spot(null); DR.UI.toggleMapExpand(true); DR.Map.fitMapBox(); });
       await sleep(900);
-      await ev(() => VX.spot('.station-marker[data-route="land"][data-pos="5"]', 16)); await sleep(1700);
-      await ev(() => VX.spot('.station-marker[data-route="sea"][data-pos="3"]', 16)); await sleep(1900);
+      await ev(() => VX.spot('.station-marker.crossover[data-route="land"]', 16)); await sleep(1700);
+      await ev(() => VX.spot('.station-marker.crossover[data-route="sea"]', 16)); await sleep(1900);
       await ev(() => VX.spot('.station-marker.final', 16)); await sleep(3000);
       await ev(() => VX.spot('.home-marker', 16));
     },
     async end() {
-      await ev(() => { VX.spot(null); DR.UI.toggleMapExpand(false); DR.UI.finishGame('timeup'); });
+      await ev(() => { VX.spot(null); DR.UI.toggleMapExpand(false); DR.UI.finishGame('firstHome'); });
       await sleep(4200);
       await ev(() => VX.spot('#screen-end .podium, #screen-end [class*="podium"]', 10));
     },

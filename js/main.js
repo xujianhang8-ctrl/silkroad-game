@@ -6,35 +6,19 @@ var DR = window.DR || (window.DR = {});
 
   let timerHandle = null;
   let lastTurnSnapshot = null;
-  let warned = {};
 
-  // ---------------- 计时器 ----------------
+  // ---------------- 用时(正计时) ----------------
+  // 没有倒计时:这里只记录已经玩了多久,暂停、打开规则/看板等浮层时不走
   function tick() {
     const state = DR.state;
     if (!state || state.phase === 'ended') return;
     const frozen = DR.Screens.timerFrozen();
     $('timer-chip').classList.toggle('frozen', frozen);
     if (frozen) return;
-    state.timerSeconds--;
-    const wasSprint = state.sprintActive;
-    state.sprintActive = state.timerSeconds > 0 && state.timerSeconds <= DR.CONFIG.sprintMinutesLeft * 60;
+    state.elapsedSeconds = (state.elapsedSeconds || 0) + 1;
     DR.UI.renderTimer(state);
-    DR.UI.renderPhaseBanner(state);
-    if (!wasSprint && state.sprintActive && !warned.sprint) {
-      warned.sprint = true;
-      DR.UI.toast(`⚡ 最后 ${DR.CONFIG.sprintMinutesLeft} 分钟:冲刺阶段开始,掷骰点数 +1!`, 'warn');
-      DR.Audio.turn();
-    }
-    if (state.timerSeconds === 60 && !warned.oneMin) {
-      warned.oneMin = true;
-      DR.UI.toast('⏳ 还剩 1 分钟,准备收尾啦', 'warn');
-    }
-    if (state.timerSeconds <= 0) {
-      DR.UI.finishGame('timeup');
-      return;
-    }
-    // 每走 10 秒同步一次存档里的剩余时间,继续游戏时不会把已经用掉的时间"退回来"
-    if (state.timerSeconds % 10 === 0) persistSnapshot(false, false);
+    // 每 10 秒把用时同步进存档
+    if (state.elapsedSeconds % 10 === 0) persistSnapshot(false, false);
   }
 
   function startTimer() {
@@ -48,8 +32,7 @@ var DR = window.DR || (window.DR = {});
     const state = DR.state;
     if (!state || state.phase === 'ended') return false;
     if (!lastTurnSnapshot) lastTurnSnapshot = DR.Game.serialize(state);
-    lastTurnSnapshot.timerSeconds = state.timerSeconds;
-    lastTurnSnapshot.sprintActive = state.sprintActive;
+    lastTurnSnapshot.elapsedSeconds = state.elapsedSeconds;
     const ok = DR.Store.writeSnapshot(lastTurnSnapshot, DR.setup, force);
     if (ok && announce) flashSaved();
     return ok;
@@ -72,7 +55,6 @@ var DR = window.DR || (window.DR = {});
   // ---------------- 开局 / 读档 ----------------
   function enterGame(state, opts) {
     DR.state = state;
-    warned = { sprint: state.sprintActive, oneMin: state.timerSeconds <= 60 };
     DR.Screens.closeGameOverlays();
     DR.UI.hideModal();
     DR.UI.showScreen('screen-game');
@@ -97,10 +79,11 @@ var DR = window.DR || (window.DR = {});
       route: t.route,
     }));
     const freq = DR.QUESTION_FREQ.find(f => f.key === setup.questionFreq) || DR.QUESTION_FREQ[1];
-    const state = DR.Game.init(teams, setup.timerMinutes, {
+    const state = DR.Game.init(teams, {
       questionChance: freq.chance,
       challenges: setup.challenges !== false,
       journey: setup.journey || 'long',
+      endMode: setup.endMode || 'first',
     });
     state.soundOn = DR.Store.settings.soundOn;
     DR.Audio.fanfare();

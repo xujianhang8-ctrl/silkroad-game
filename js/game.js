@@ -137,13 +137,18 @@ DR.Game = {
   path(route) { return pathFor(route); },
   buildBoard,
 
-  // options:{ questionChance, challenges, journey }(来自设置向导)
-  init(setupTeams, timerMinutes, options) {
+  // options:{ questionChance, challenges, journey, endMode }(来自设置向导)
+  // 没有倒计时:游戏在队伍回到长安时结束(endMode:'all' 全部回来 / 'first' 第一队回来后打完这一轮),
+  // 老师也可以随时点"结束"。
+  init(setupTeams, options) {
     const opts = Object.assign({
       questionChance: DR.CONFIG.questionChance,
       challenges: true,
       challengeChance: DR.CONFIG.challengeChance,
+      journey: 'long',
+      endMode: 'all',
     }, options || {});
+    const bank = this.bankFor(opts.journey, setupTeams.length);
     const state = {
       teams: setupTeams.map((t, i) => ({
         id: i,
@@ -167,13 +172,10 @@ DR.Game = {
       })),
       activeIndex: 0,
       round: 1,
-      // 功德库按游戏时长配置:时间越长,库越大(不少于 bankTotal)
-      bank: Math.max(DR.CONFIG.bankTotal, Math.round(DR.CONFIG.bankPerMinute * timerMinutes)),
-      bankStart: Math.max(DR.CONFIG.bankTotal, Math.round(DR.CONFIG.bankPerMinute * timerMinutes)),
-      timerSeconds: timerMinutes * 60,
-      totalSeconds: timerMinutes * 60,
-      timerRunning: false,
-      sprintActive: false,
+      bank,
+      bankStart: bank,
+      elapsedSeconds: 0,      // 已用时间(正计时,暂停时不走)
+      finalRound: false,      // endMode='first' 时:有队伍回到长安后进入"最后一轮"
       phase: 'awaiting_roll', // awaiting_roll | ended (是否游戏已结束)
       turnPhase: 'roll',      // roll | landing | market | end (当前回合处于哪个阶段,驱动进度条)
       lastRoll: null,
@@ -184,7 +186,7 @@ DR.Game = {
       questionDeck: makeDeck(DR.QUESTIONS),
       challengeDeck: makeDeck(DR.CHALLENGES),
       options: opts,
-      journey: { length: opts.journey || 'short', seed: 1 + Math.floor(Math.random() * 2147483000) },
+      journey: { length: opts.journey, seed: 1 + Math.floor(Math.random() * 2147483000) },
       history: [],            // 每轮结束时各队的总功德,用于"战况看板"与结算页的走势图
       qlog: [],               // 本局出现过的智慧问答及作答情况
       log: [],
@@ -290,15 +292,45 @@ DR.Game = {
 
   rollDice(state) {
     const sides = DR.CONFIG.diceSides;
-    let value = 1 + Math.floor(Math.random() * sides);
-    if (state.sprintActive) value += 1;
+    const value = 1 + Math.floor(Math.random() * sides);
     state.lastRoll = value;
     this.activeTeam(state).turnsTaken++;
     return value;
   },
 
-  // 前进 + 落地结算。返回描述对象供 UI 渲染。
-  moveAndResolve(state) {
+  // 功德库大小:按旅程长度与队伍数配置,足够撑到大家回到长安(只在极端情况下才会提前耗尽)
+  bankFor(journeyKey, nTeams) {
+    const len = DR.JOURNEY_LENGTHS.find(j => j.key === journeyKey) || DR.JOURNEY_LENGTHS[0];
+    return Math.max(DR.CONFIG.bankTotal, Math.round(len.turns * nTeams * DR.CONFIG.bankPerTeamTurn / 10) * 10);
+  },
+
+  // 这次掷骰会"路过"哪些城市(不含村落、不含终点和最终落点):队伍可以选择在其中一座城提前停下,
+  // 这样就不会因为点数太大而错过想去的城市。
+  citiesOnTheWay(state) {
+    const team = this.activeTeam(state);
+    if (team.skipNext || team.completed) return [];
+    const path = pathFor(team.route);
+    const target = this.targetPosition(state);
+    const out = [];
+    const step = team.direction === 'out' ? 1 : -1;
+    for (let p = team.position + step; p !== target; p += step) {
+      if (p <= 0 || p > path.length) break;
+      const st = path[p - 1];
+      if (st.type !== 'village') out.push({ position: p, station: st });
+    }
+    return out;
+  },
+
+  targetPosition(state) {
+    const team = this.activeTeam(state);
+    const path = pathFor(team.route);
+    return team.direction === 'out'
+      ? Math.min(team.position + state.lastRoll, path.length)
+      : Math.max(team.position - state.lastRoll, 0);
+  },
+
+  // 前进 + 落地结算。stopAt:可选,提前停下的位置(必须是这次路过的城市)。返回描述对象供 UI 渲染。
+  moveAndResolve(state, stopAt) {
     const team = this.activeTeam(state);
 
     if (team.skipNext) {
@@ -308,19 +340,20 @@ DR.Game = {
     }
 
     const path = pathFor(team.route);
-    const dice = state.lastRoll;
-
-    if (team.direction === 'out') {
-      team.position = Math.min(team.position + dice, path.length);
-    } else {
-      team.position = Math.max(team.position - dice, 0);
-    }
+    const early = stopAt != null && this.citiesOnTheWay(state).some(c => c.position === stopAt);
+    team.position = early ? stopAt : this.targetPosition(state);
+    if (early) this.log(state, `${team.icon}${team.name} 选择在${path[stopAt - 1].name}进城停留。`);
 
     if (team.direction === 'back' && team.position === 0) {
       team.completed = true;
       const bonus = this.changeMerit(state, team, DR.CONFIG.roundTripBonus);
       this.log(state, `🎉 ${team.icon}${team.name} 回到长安,功德圆满!获得 ${bonus} 点功德奖励。`);
-      return { arrivedHome: true, team };
+      const startsFinalRound = state.options.endMode === 'first' && !state.finalRound;
+      if (startsFinalRound) {
+        state.finalRound = true;
+        this.log(state, `🏁 ${team.name} 第一个回到长安:这一轮结束后游戏结算。`);
+      }
+      return { arrivedHome: true, team, startsFinalRound };
     }
 
     const station = path[team.position - 1];
@@ -518,6 +551,13 @@ DR.Game = {
     return state.teams.every(t => t.completed);
   },
 
+  // 是否该结算了(不含老师手动结束):全部回到长安;或"第一队回来就结束"模式下,最后一轮已经打完
+  shouldEnd(state, startingNewRound) {
+    if (this.allCompleted(state)) return 'allHome';
+    if (state.finalRound && startingNewRound) return 'firstHome';
+    return null;
+  },
+
   isAutoTurn(state) {
     return this.activeTeam(state).completed;
   },
@@ -633,9 +673,8 @@ DR.Game = {
       round: state.round,
       bank: state.bank,
       bankStart: state.bankStart,
-      timerSeconds: state.timerSeconds,
-      totalSeconds: state.totalSeconds,
-      sprintActive: state.sprintActive,
+      elapsedSeconds: state.elapsedSeconds,
+      finalRound: state.finalRound,
       lampOwners: state.lampOwners,
       decks: {
         land: deckToJSON(state.landDeck),
@@ -666,10 +705,10 @@ DR.Game = {
       round: data.round || 1,
       bank: data.bank,
       bankStart: data.bankStart || DR.CONFIG.bankTotal,
-      timerSeconds: data.timerSeconds,
-      totalSeconds: data.totalSeconds || data.timerSeconds,
-      timerRunning: false,
-      sprintActive: !!data.sprintActive,
+      // 旧存档是倒计时:换算成已用时间
+      elapsedSeconds: data.elapsedSeconds != null ? data.elapsedSeconds
+        : Math.max(0, (data.totalSeconds || 0) - (data.timerSeconds || 0)),
+      finalRound: !!data.finalRound,
       phase: 'awaiting_roll',
       turnPhase: 'roll',
       lastRoll: null,

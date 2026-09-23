@@ -134,7 +134,7 @@ function renderHome() {
   $('home-continue').classList.toggle('hidden', !save);
   if (save) {
     $('home-continue-info').textContent =
-      `${save.teams.map(t => t.icon).join('')} · 第 ${save.round} 轮 · 剩余 ${fmtClock(save.timerSeconds)} · ${fmtAgo(save.savedAt)}保存`;
+      `${save.teams.map(t => t.icon).join('')} · 第 ${save.round} 轮 · 已玩 ${fmtClock(save.elapsedSeconds || 0)} · ${fmtAgo(save.savedAt)}保存`;
   }
   showFact();
   clearInterval(factTimer);
@@ -195,7 +195,7 @@ function ensureSetup() {
     teams: DR.TEAM_PRESETS.slice(0, 5).map((p, i) => ({
       name: p.name, icon: p.icon, color: p.color, route: i % 2 === 0 ? 'land' : 'sea',
     })),
-    timerMinutes: DR.CONFIG.defaultTimerMinutes,
+    endMode: 'first',
     questionFreq: 'normal',
     challenges: true,
     journey: 'long',
@@ -222,6 +222,7 @@ function goStep(n) {
   $('wizard-prev').style.visibility = wizardStep === 1 ? 'hidden' : 'visible';
   $('wizard-next').classList.toggle('hidden', wizardStep === 3);
   $('btn-start-game').classList.toggle('hidden', wizardStep !== 3);
+  if (wizardStep === 2) renderOptionChoices(); // 预计用时跟队伍数有关,第一步改了队伍数要刷新
   if (wizardStep === 3) renderSetupSummary();
   const body = document.querySelector('.wizard-body');
   if (body) body.scrollTop = 0;
@@ -322,10 +323,10 @@ function wireSetup() {
     renderTeamConfigList();
   });
 
-  $('timer-choices').addEventListener('click', e => {
-    const card = e.target.closest('[data-minutes]');
+  $('endmode-choices').addEventListener('click', e => {
+    const card = e.target.closest('[data-endmode]');
     if (!card) return;
-    DR.setup.timerMinutes = +card.dataset.minutes;
+    DR.setup.endMode = card.dataset.endmode;
     DR.Audio.click();
     renderOptionChoices();
   });
@@ -359,26 +360,32 @@ function wireSetup() {
   $('setup-back-home').addEventListener('click', goHome);
 }
 
-const TIMER_CHOICES = [
-  { m: 20, label: '短课', sub: '适合复习课' },
-  { m: 25, label: '紧凑', sub: '节奏较快' },
-  { m: 30, label: '标准', sub: '推荐' },
-  { m: 35, label: '从容', sub: '多些讨论' },
-  { m: 45, label: '完整', sub: '一整节课' },
-];
+// 预计课堂用时(分钟):队伍数 × 每队平均回合数 × 每回合秒数
+function estimateMinutes(journeyKey, endMode, nTeams) {
+  const j = DR.JOURNEY_LENGTHS.find(x => x.key === journeyKey) || DR.JOURNEY_LENGTHS[0];
+  return Math.round(nTeams * j.play[endMode === 'all' ? 'all' : 'first'] * DR.CONFIG.secondsPerTurn / 60 / 5) * 5;
+}
+function fmtMinutes(m) {
+  if (m < 60) return `约 ${m} 分钟`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return `约 ${h} 小时${r ? ' ' + r + ' 分' : ''}`;
+}
 
 function renderOptionChoices() {
-  $('timer-choices').innerHTML = TIMER_CHOICES.map(c => `
-    <button type="button" class="choice-card ${DR.setup.timerMinutes === c.m ? 'on' : ''}" data-minutes="${c.m}">
-      <b>${c.m}<small> 分钟</small></b><span>${c.label}</span><em>${c.sub}</em>
-    </button>`).join('');
   const journey = DR.setup.journey || 'long';
+  const endMode = DR.setup.endMode || 'first';
+  const n = DR.setup.teams.length;
   $('journey-choices').innerHTML = DR.JOURNEY_LENGTHS.map(j => {
-    const steps = r => { const n = (r === 'land' ? DR.LAND_PATH : DR.SEA_PATH).length; return Math.round(n + n * (j.min + j.max) / 2); };
+    const steps = r => { const k = (r === 'land' ? DR.LAND_PATH : DR.SEA_PATH).length; return Math.round(k + k * (j.min + j.max) / 2); };
     return `<button type="button" class="choice-card ${journey === j.key ? 'on' : ''}" data-journey="${j.key}">
       <b>${j.label}</b><span>${j.sub}</span><em>陆路约 ${steps('land')} 步 · 海路约 ${steps('sea')} 步</em>
+      <em class="cc-time">⏱ ${n} 队${fmtMinutes(estimateMinutes(j.key, endMode, n))}</em>
     </button>`;
   }).join('');
+  $('endmode-choices').innerHTML = DR.END_MODES.map(m => `
+    <button type="button" class="choice-card ${endMode === m.key ? 'on' : ''}" data-endmode="${m.key}">
+      <b>${m.label}</b><span>${m.sub}</span><em class="cc-time">⏱ ${fmtMinutes(estimateMinutes(journey, m.key, n))}</em>
+    </button>`).join('');
   $('qfreq-choices').innerHTML = DR.QUESTION_FREQ.map(f => `
     <button type="button" class="choice-card ${DR.setup.questionFreq === f.key ? 'on' : ''}" data-freq="${f.key}">
       <b>${f.label}</b><span>约 ${Math.round(f.chance * 100)}% 的落地</span>
@@ -400,7 +407,8 @@ function renderSetupSummary() {
     <div class="sum-route"><div class="sum-route-name">⛵ 海路 · ${sea.length} 队</div><div class="sum-teams">${sea.map(teamChip).join('') || '<em>暂无</em>'}</div>
       <p class="sum-desc">广州 → 南海诸国 → 马六甲 → 狮子国 → 天竺 · 共 ${DR.SEA_PATH.length} 站</p></div>
     <div class="sum-options">
-      <span>⏳ ${DR.setup.timerMinutes} 分钟</span>
+      <span>⏱ 不限时 · ${fmtMinutes(estimateMinutes(DR.setup.journey || 'long', DR.setup.endMode || 'first', teams.length))}</span>
+      <span>🏁 ${(DR.END_MODES.find(m => m.key === (DR.setup.endMode || 'first')) || DR.END_MODES[0]).label}时结算</span>
       <span>🏘️ ${(DR.JOURNEY_LENGTHS.find(j => j.key === (DR.setup.journey || 'long')) || DR.JOURNEY_LENGTHS[0]).label}(${(DR.JOURNEY_LENGTHS.find(j => j.key === (DR.setup.journey || 'long')) || DR.JOURNEY_LENGTHS[0]).sub})</span>
       <span>💡 问答${freq.label}</span>
       <span>🎯 课堂挑战${DR.setup.challenges !== false ? '开' : '关'}</span>
@@ -683,7 +691,7 @@ function renderHonors() {
     <div class="hs-card"><b>${answers}</b><span>道智慧问答被答对</span></div>
     <div class="hs-card"><b>${lamps}</b><span>盏法灯被点亮</span></div>`;
   const medal = ['🥇', '🥈', '🥉'];
-  const reasonText = { timeup: '时间到', bankEmpty: '功德库耗尽', manual: '老师结束', allHome: '全员圆满' };
+  const reasonText = { timeup: '时间到', bankEmpty: '功德库耗尽', manual: '老师结束', allHome: '全员圆满', firstHome: '率先回到长安' };
   $('honors-list').innerHTML = list.map(g => `
     <article class="honor-card">
       <header><span class="hc-date">📅 ${fmtDate(g.date)}</span><span class="hc-meta">⏳ ${g.minutes} 分钟 · ${g.rounds} 轮 · ${reasonText[g.reason] || ''}</span></header>
@@ -794,7 +802,7 @@ function renderPauseSub() {
   const st = DR.state;
   if (!st) return;
   const team = DR.Game.activeTeam(st);
-  $('pause-sub').innerHTML = `计时已暂停 · 剩余 <b>${fmtClock(st.timerSeconds)}</b> · 第 ${st.round} 轮 · 当前:${team.icon} ${esc(team.name)}`;
+  $('pause-sub').innerHTML = `已暂停 · 已用时 <b>${fmtClock(st.elapsedSeconds || 0)}</b> · 第 ${st.round} 轮 · 当前:${team.icon} ${esc(team.name)}`;
 }
 
 function pauseGame() {

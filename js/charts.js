@@ -243,7 +243,7 @@ function renderClassStats(container, state) {
   const challenges = state.teams.reduce((s, t) => s + (t.challengesDone || 0), 0);
   const lamps = state.teams.reduce((s, t) => s + t.lampsLit, 0);
   const trips = state.teams.filter(t => t.completed).length;
-  const used = state.totalSeconds - Math.max(0, state.timerSeconds);
+  const used = state.elapsedSeconds || 0;
   const bankPct = Math.max(0, Math.min(100, state.bank / (state.bankStart || DR.CONFIG.bankTotal) * 100));
   container.innerHTML = `
     <div class="kpi-row">
@@ -274,7 +274,7 @@ function renderClassStats(container, state) {
 function openStats() {
   const state = DR.state;
   if (!state) return;
-  $('stats-sub').textContent = `第 ${state.round} 轮 · 剩余 ${fmtClock(state.timerSeconds)} · 功德库 ${state.bank}`;
+  $('stats-sub').textContent = `第 ${state.round} 轮 · 已用 ${fmtClock(state.elapsedSeconds || 0)} · 功德库 ${state.bank}`;
   // 先显示浮层再画图:走势图要按容器的实际宽度来画
   DR.Screens.openOverlay('stats-overlay');
   renderRanking($('stats-ranking'), state);
@@ -295,8 +295,8 @@ let endContext = null;
 
 function renderEnd(state, results, reason) {
   endContext = { state, results, reason };
-  const reasonText = { timeup: '⏰ 时间到', bankEmpty: '🏦 功德库已用完', manual: '🏁 老师结束了本局', allHome: '🌸 所有队伍都已功德圆满' }[reason] || '';
-  const used = Math.max(1, Math.round((state.totalSeconds - Math.max(0, state.timerSeconds)) / 60));
+  const reasonText = { timeup: '⏰ 时间到', bankEmpty: '🏦 功德库已用完', manual: '🏁 老师结束了本局', allHome: '🌸 所有队伍都已功德圆满', firstHome: '🏁 有队伍率先回到长安,最后一轮结束' }[reason] || '';
+  const used = Math.max(1, Math.round((state.elapsedSeconds || 0) / 60));
   $('end-sub').textContent = `${reasonText} · 共进行 ${state.round} 轮 · 用时约 ${used} 分钟 · 答对 ${state.qlog.filter(q => q.correct).length} 道智慧问答`;
 
   // 颁奖台(前三名)

@@ -195,16 +195,16 @@ function renderJourneyLog(state) {
 
 function renderBank(state) { $('bank-display').textContent = state.bank; }
 
+// 已用时间(正计时,不限时)
 function renderTimer(state) {
-  const total = Math.max(0, state.timerSeconds);
-  const m = Math.floor(total / 60), s = total % 60;
-  $('timer-display').textContent = `${m}:${s.toString().padStart(2, '0')}`;
-  $('timer-chip').classList.toggle('sprint', state.sprintActive);
+  const total = Math.max(0, state.elapsedSeconds || 0);
+  const h = Math.floor(total / 3600), m = Math.floor(total % 3600 / 60), s = total % 60;
+  $('timer-display').textContent = (h ? `${h}:${String(m).padStart(2, '0')}` : `${m}`) + `:${String(s).padStart(2, '0')}`;
 }
 
 function renderPhaseBanner(state) {
   const el = $('phase-banner');
-  if (state.sprintActive) { el.textContent = '⚡ 冲刺阶段,骰子 +1!'; el.classList.add('show'); }
+  if (state.finalRound) { el.textContent = '🏁 最后一轮'; el.classList.add('show'); }
   else { el.classList.remove('show'); }
 }
 
@@ -307,6 +307,35 @@ function renderModal() {
   else if (modalMode === 'home') renderHomeModal();
   else if (modalMode === 'confirmEnd') renderConfirmEndModal();
   else if (modalMode === 'teamDetail') renderTeamDetailModal();
+  else if (modalMode === 'stopChoice') renderStopChoiceModal();
+}
+
+// 掷骰后会路过城市时:让队伍选择"进城停留",还是走完全部点数
+function renderStopChoiceModal() {
+  const state = DR.state;
+  const team = DR.Game.activeTeam(state);
+  const { cities, target } = modalData;
+  const path = DR.Game.path(team.route);
+  const targetName = target === 0 ? '长安' : path[target - 1].name;
+  const targetIsVillage = target > 0 && path[target - 1].type === 'village';
+  const steps = p => Math.abs(p - team.position);
+  box().innerHTML = `
+    <div class="card-kicker">🎲 掷出 ${state.lastRoll} 点 ${teamTag(team)}</div>
+    <h2>要进城停留吗?</h2>
+    <p class="modal-text">这次会路过下面的城市。可以在城里停下来(抽卡、结缘、点灯),也可以继续走完 ${state.lastRoll} 步。</p>
+    <div class="stop-options">
+      ${cities.map(c => `<button class="stop-btn" data-pos="${c.position}"><span class="stop-icon">${DR.Map.iconFor(c.station)}</span>
+        <span><b>停在 ${escapeHtml(c.station.name)}</b><small>走 ${steps(c.position)} 步 · ${stationKind(c.station)}</small></span></button>`).join('')}
+    </div>
+    <div class="modal-buttons"><button id="stop-continue" class="btn-primary modal-confirm">➜ 继续前进到 ${escapeHtml(targetName)}${targetIsVillage ? '(村落歇脚)' : ''}</button></div>
+  `;
+  const go = stopAt => { hideModal(); moveTeam(stopAt); };
+  box().querySelectorAll('.stop-btn').forEach(b => b.addEventListener('click', e => { DR.Audio.click(); go(+e.currentTarget.dataset.pos); }));
+  $('stop-continue').addEventListener('click', () => { DR.Audio.click(); go(null); });
+}
+function box() { return $('modal-box'); }
+function stationKind(st) {
+  return { site: '圣地 · 可结缘', story: '剧情站', way: '驿站', final: '终点' }[st.type] || '站点';
 }
 
 function lampBonusLine(result) {
@@ -703,6 +732,8 @@ function beginTurn(opts) {
     setTimeout(() => {
       if (state.phase === 'ended' || DR.state !== state) return;
       if (DR.Game.bankEmpty(state)) { DR.UI.finishGame('bankEmpty'); return; }
+      const endReason = DR.Game.shouldEnd(state, (state.activeIndex + 1) % state.teams.length === 0);
+      if (endReason) { DR.UI.finishGame(endReason); return; }
       const newRound = DR.Game.nextTeam(state);
       beginTurn({ newRound });
     }, 1100);
@@ -752,16 +783,27 @@ function onRollClick() {
       diceEl.classList.remove('rolling');
       if (state.phase === 'ended' || DR.state !== state) return;
       const value = DR.Game.rollDice(state);
-      setDieFace(Math.min(value, 6));
+      setDieFace(value);
       onRolled();
     }
   }, 70);
 }
 
-async function onRolled() {
+function onRolled() {
   const state = DR.state;
+  const cities = DR.Game.citiesOnTheWay(state);
+  if (cities.length) {
+    showModal('stopChoice', { cities, target: DR.Game.targetPosition(state) });
+    return;
+  }
+  moveTeam(null);
+}
+
+async function moveTeam(stopAt) {
+  const state = DR.state;
+  if (!state || state.phase === 'ended') return;
   const fromPos = DR.Game.activeTeam(state).position;
-  const result = DR.Game.moveAndResolve(state);
+  const result = DR.Game.moveAndResolve(state, stopAt);
   renderTeamsPanel(state); renderBank(state); renderJourneyLog(state);
 
   if (result.skipped) {
@@ -780,6 +822,8 @@ async function onRolled() {
   if (result.arrivedHome) {
     state.turnPhase = 'end';
     renderPhaseTracker(state);
+    renderPhaseBanner(state);
+    if (result.startsFinalRound) toast(`🏁 ${result.team.icon}${escapeHtml(result.team.name)} 第一个回到长安!这一轮结束后结算`, 'warn');
     DR.Audio.finish();
     showModal('home', { team: result.team });
     showNextOnly();
@@ -879,7 +923,8 @@ async function onNextTeamClick() {
   const state = DR.state;
   if (turnEndTransitioning || !state || state.phase === 'ended') return;
   if (DR.Game.bankEmpty(state)) { DR.UI.finishGame('bankEmpty'); return; }
-  if (DR.Game.allCompleted(state)) { DR.UI.finishGame('allHome'); return; }
+  const endReason = DR.Game.shouldEnd(state, (state.activeIndex + 1) % state.teams.length === 0);
+  if (endReason) { DR.UI.finishGame(endReason); return; }
   turnEndTransitioning = true;
   $('btn-next-team').disabled = true;
   state.turnPhase = 'end';
@@ -910,7 +955,7 @@ function finishGame(reason) {
   const results = DR.Game.computeResults(state);
   DR.Store.addHonor({
     date: Date.now(),
-    minutes: Math.max(1, Math.round((state.totalSeconds - Math.max(0, state.timerSeconds)) / 60)),
+    minutes: Math.max(1, Math.round((state.elapsedSeconds || 0) / 60)),
     rounds: state.round,
     reason,
     teams: results.map(r => ({
