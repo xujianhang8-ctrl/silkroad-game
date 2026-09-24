@@ -540,6 +540,7 @@ function stationTypeLabel(st) {
   if (st.type === 'site') return '🛕 圣地 · 可结缘';
   if (st.type === 'story') return '⭐ 剧情站';
   if (st.type === 'way') return '📍 普通驿站';
+  if (st.type === 'village') return '🏡 沿途村落 · 停下会抽村落见闻';
   return '🏯 起点 · 都城';
 }
 
@@ -694,12 +695,28 @@ function layoutTokens(state) {
   updateMinimapTokens(state);
 }
 
-async function animateActiveMove(state, fromPos) {
+// 地图上飘起一个小提示(例如路过城市时的"+2"),一秒多后自动消失
+function floatGain(routeKey, pos, text, kind) {
+  const wrap = $('map-markers');
+  if (!wrap) return;
+  const c = coordFor(routeKey, pos);
+  const el = document.createElement('div');
+  el.className = 'float-gain' + (kind ? ' fg-' + kind : '');
+  el.textContent = text;
+  el.style.left = pctX(c.x);
+  el.style.top = pctY(c.y);
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), reducedMotion ? 900 : 1500);
+}
+
+// passed:本次路过的城带来的收获(见 DR.Game.passThrough),棋子经过时在那座城上方飘出提示
+async function animateActiveMove(state, fromPos, passed) {
   const team = DR.Game.activeTeam(state);
   const toPos = team.position;
   const route = team.route;
   const el = $('token-' + team.id);
   const dir = toPos > fromPos ? 1 : (toPos < fromPos ? -1 : 0);
+  const gains = new Map((passed || []).map(g => [g.position, g]));
 
   if (dir === 0 || !el) { layoutTokens(state); return; }
 
@@ -712,6 +729,12 @@ async function animateActiveMove(state, fromPos) {
     el.style.top = pctY(c.y);
     el.style.transform = 'translate(-50%, -50%) scale(var(--marker-scale, 1))';
     DR.Audio.hop();
+    const g = gains.get(cur);
+    if (g) {
+      if (g.arrival) floatGain(route, cur, `+${g.arrival}`);
+      if (g.story) floatGain(route, cur, '⭐', 'story');
+      if (g.lamp) floatGain(route, cur, `🪔+${g.lamp.ownerGain}`, 'lamp');
+    }
     // 放大查看时,棋子走出视野就让镜头跟过去
     if (mapScale > 1.001 && !isInView(c.x, c.y, 50)) centerOn(c.x, c.y, null, reducedMotion ? 0 : 260);
     await sleep(230);
@@ -786,6 +809,7 @@ DR.Map = {
   initTokens,
   layoutTokens,
   animateActiveMove,
+  floatGain,
   pulseTeamToken,
   showTeam,
   focusActiveTeam,

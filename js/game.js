@@ -13,10 +13,73 @@ function mulberry32(a) {
   };
 }
 
+function shuffledNames(parts, rand) {
+  const names = [];
+  parts.prefix.forEach(pf => parts.suffix.forEach(sf => names.push(pf + sf)));
+  for (let i = names.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [names[i], names[j]] = [names[j], names[i]];
+  }
+  return names;
+}
+
 // 生成本局棋盘:在长安与第一座城之间、以及每两座城之间,随机插入若干个小村落。
 // 村落正好落在两城之间的路线上,因此地图上的路线不用改动。
-function buildBoard(lengthKey, seed) {
+// version 2(新游戏):陆路、海路都补到同样的步数(旅程长度的 steps),村落按每一段在地图上的路程分配,
+//   路越远的一段村落越多(再加一点随机,每局都不一样);每个村落带上风土 region,决定村名和见闻卡。
+// version 1(旧存档):每一段随机 min–max 个村落。保留原算法,旧存档才能还原出同一张棋盘。
+function buildBoard(lengthKey, seed, version) {
   const len = DR.JOURNEY_LENGTHS.find(j => j.key === lengthKey) || DR.JOURNEY_LENGTHS[0];
+  if (version === 2 && len.steps) return buildBoardV2(len, seed);
+  return buildBoardV1(len, seed);
+}
+
+function buildBoardV2(len, seed) {
+  const rand = mulberry32(seed || 1);
+  const pools = {};
+  const nameFor = region => {
+    const parts = DR.VILLAGE_NAME_PARTS[region] || DR.VILLAGE_NAME_PARTS.land;
+    if (!pools[region]) pools[region] = shuffledNames(parts, rand);
+    return pools[region].pop() || '无名村';
+  };
+  const board = {};
+  ['land', 'sea'].forEach(route => {
+    const cities = route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+    const total = Math.max(0, len.steps - cities.length);
+    let prev = DR.HOME_COORD;
+    const weights = cities.map(city => {
+      const d = Math.hypot(city.x - prev.x, city.y - prev.y);
+      prev = city;
+      return d * (0.7 + 0.6 * rand());
+    });
+    const sum = weights.reduce((a, b) => a + b, 0) || 1;
+    const quota = weights.map(w => total * w / sum);
+    const count = quota.map(Math.floor);
+    const left = total - count.reduce((a, b) => a + b, 0);
+    quota.map((q, i) => [q - count[i], i]).sort((a, b) => b[0] - a[0]).slice(0, left).forEach(([, i]) => { count[i]++; });
+    const out = [];
+    prev = DR.HOME_COORD;
+    cities.forEach((city, i) => {
+      const region = city.villages || route;
+      const parts = DR.VILLAGE_NAME_PARTS[region] || DR.VILLAGE_NAME_PARTS[route];
+      for (let v = 1; v <= count[i]; v++) {
+        const t = v / (count[i] + 1);
+        out.push({
+          name: nameFor(region), type: 'village', route, region,
+          x: Math.round((prev.x + (city.x - prev.x) * t) * 10) / 10,
+          y: Math.round((prev.y + (city.y - prev.y) * t) * 10) / 10,
+          blurb: parts.blurb,
+        });
+      }
+      out.push(city);
+      prev = city;
+    });
+    board[route] = out;
+  });
+  return board;
+}
+
+function buildBoardV1(len, seed) {
   const rand = mulberry32(seed || 1);
   const board = {};
   ['land', 'sea'].forEach(route => {
@@ -51,7 +114,7 @@ function buildBoard(lengthKey, seed) {
 
 function useBoard(state) {
   const j = state.journey || { length: 'short', seed: 1 };
-  DR.BOARD = buildBoard(j.length, j.seed);
+  DR.BOARD = buildBoard(j.length, j.seed, j.v);
 }
 
 function pathFor(route) {
@@ -121,6 +184,38 @@ function lampCostFor(station) {
   return station.type === 'site' ? DR.CONFIG.lampCostSite : DR.CONFIG.lampCostWay;
 }
 
+// 开路功德:海路港口少、相隔远,每个新港口多给一点(见 DR.CONFIG)
+function arrivalBonusFor(route) {
+  const c = DR.CONFIG;
+  return route === 'sea' && c.firstArrivalBonusSea != null ? c.firstArrivalBonusSea : c.firstArrivalBonus;
+}
+
+// 第 n 个(从 0 起)回到长安的队伍得到的奖励
+function homeBonusFor(order) {
+  const list = DR.CONFIG.homeBonuses || [15];
+  return list[Math.min(order, list.length - 1)];
+}
+
+// 村落见闻:每种风土一副牌。村落没有风土(旧存档)时按路线取 land / sea
+function villageRegions() { return Object.keys(DR.VILLAGE_EVENTS || {}); }
+function makeVillageDecks() {
+  const decks = {};
+  villageRegions().forEach(r => { if (DR.VILLAGE_EVENTS[r].length) decks[r] = makeDeck(DR.VILLAGE_EVENTS[r]); });
+  return decks;
+}
+function villageDecksToJSON(decks) {
+  const out = {};
+  Object.keys(decks || {}).forEach(r => { out[r] = deckToJSON(decks[r]); });
+  return out;
+}
+function villageDecksFromJSON(json) {
+  const decks = {};
+  villageRegions().forEach(r => {
+    if (DR.VILLAGE_EVENTS[r].length) decks[r] = deckFromJSON(json && json[r], DR.VILLAGE_EVENTS[r]);
+  });
+  return decks;
+}
+
 const LOG_LIMIT = 400;
 
 DR.Game = {
@@ -168,7 +263,11 @@ DR.Game = {
         correctAnswers: 0,
         challengesDone: 0,
         turnsTaken: 0,
+        stepsTaken: 0,    // 一共走了多少步(精进奖)
+        homeOrder: null,  // 回到长安的名次(0 起;同一轮回来的队伍名次相同)
+        homeRound: null,  // 第几轮回到长安
         lampsLit: 0,
+        lampMerit: 0,     // 供在法灯里的功德(法灯长明:结算时计入总功德)
       })),
       activeIndex: 0,
       round: 1,
@@ -185,8 +284,9 @@ DR.Game = {
       seaDeck: makeDeck(DR.SEA_EVENTS),
       questionDeck: makeDeck(DR.QUESTIONS),
       challengeDeck: makeDeck(DR.CHALLENGES),
+      villageDecks: makeVillageDecks(),
       options: opts,
-      journey: { length: opts.journey, seed: 1 + Math.floor(Math.random() * 2147483000) },
+      journey: { length: opts.journey, seed: 1 + Math.floor(Math.random() * 2147483000), v: 2 },
       history: [],            // 每轮结束时各队的总功德,用于"战况看板"与结算页的走势图
       qlog: [],               // 本局出现过的智慧问答及作答情况
       log: [],
@@ -258,8 +358,10 @@ DR.Game = {
     return { converted: false, key: realKey };
   },
 
+  // 返回 { bagExpanded, bagAlreadyMax }:卡面据此显示"行囊扩充"或"行囊已经是最大的了"
   applyEffect(state, team, effect) {
-    if (!effect) return;
+    const out = {};
+    if (!effect) return out;
     if (typeof effect.merit === 'number') {
       const actual = this.changeMerit(state, team, effect.merit);
       if (effect.merit > 0) this.log(state, `${team.icon}${team.name} 获得 ${actual} 点功德。`);
@@ -273,12 +375,16 @@ DR.Game = {
       const cap = Math.min(team.backpackCap + effect.backpackBonus, DR.CONFIG.backpackCapacityUpgraded);
       if (cap > team.backpackCap) {
         team.backpackCap = cap;
+        out.bagExpanded = true;
         this.log(state, `🎒 ${team.icon}${team.name} 的行囊扩充到 ${cap} 格,可以集齐六度了!`);
+      } else {
+        out.bagAlreadyMax = true;
       }
     }
     if (effect.fragment) {
       this.grantFragment(state, team, effect.fragment);
     }
+    return out;
   },
 
   // 被"暂停一次"的队伍:回合开始时直接原地休整,不用掷骰(也不计入掷骰次数)
@@ -304,21 +410,57 @@ DR.Game = {
     return Math.max(DR.CONFIG.bankTotal, Math.round(len.turns * nTeams * DR.CONFIG.bankPerTeamTurn / 10) * 10);
   },
 
-  // 这次掷骰会"路过"哪些城市(不含村落、不含终点和最终落点):队伍可以选择在其中一座城提前停下,
-  // 这样就不会因为点数太大而错过想去的城市。
-  citiesOnTheWay(state) {
+  // 这次掷骰的行程(只计算,不改动状态):
+  //   target —— 会走到哪里(掷几点走几步)
+  //   stops  —— 路上经过的圣地:可以选择在圣地提前停下结缘(这是真正的取舍:结缘 还是 多走几步)
+  //   其他城市路过就好:路过也算到访,开路功德照拿;剧情站路过也会触发剧情,所以不会因为点数大而"错过"什么。
+  planMove(state) {
     const team = this.activeTeam(state);
-    if (team.skipNext || team.completed) return [];
     const path = pathFor(team.route);
-    const target = this.targetPosition(state);
-    const out = [];
+    const plan = { from: team.position, target: team.position, stops: [] };
+    if (team.skipNext || team.completed || state.lastRoll == null) return plan;
+    plan.target = this.targetPosition(state);
     const step = team.direction === 'out' ? 1 : -1;
-    for (let p = team.position + step; p !== target; p += step) {
+    for (let p = team.position + step; p !== plan.target; p += step) {
       if (p <= 0 || p > path.length) break;
-      const st = path[p - 1];
-      if (st.type !== 'village') out.push({ position: p, station: st });
+      if (path[p - 1].type === 'site') plan.stops.push({ position: p, station: path[p - 1] });
     }
-    return out;
+    return plan;
+  },
+
+  // 路过一座城(没有停下):第一次路过也算到访,拿开路功德;第一次路过剧情站,照样听到剧情(剧情卡的奖励照给);
+  // 路过别队的法灯,点灯的队伍得到随喜功德(默认不给,见 DR.CONFIG)。
+  // 返回这座城带来的收获(没有收获时返回 null),UI 用它在地图上飘出"+2"之类的提示、补放剧情卡。
+  passThrough(state, team, pos, station) {
+    const key = team.route + ':' + pos;
+    const gain = { position: pos, station, arrival: 0, lamp: null, story: null };
+    if (!team.visited.has(key)) {
+      team.visited.add(key);
+      if (pos !== pathFor(team.route).length) gain.arrival = this.changeMerit(state, team, arrivalBonusFor(team.route));
+      if (gain.arrival > 0) this.log(state, `${team.icon}${team.name} 路过${station.name},获得 ${gain.arrival} 点开路功德。`);
+      if (station.type === 'story' && station.story) {
+        this.log(state, `⭐ ${team.icon}${team.name} 途经${station.name}:${station.story.title}`);
+        gain.story = Object.assign({ story: station.story }, this.applyEffect(state, team, station.story.effect));
+      }
+    }
+    const owner = state.lampOwners[key];
+    if (owner && owner.teamId !== team.id) {
+      const ownerTeam = state.teams[owner.teamId];
+      const ownerGain = this.changeMerit(state, ownerTeam, DR.CONFIG.lampPassOwner || 0);
+      const visitorGain = this.changeMerit(state, team, DR.CONFIG.lampPassVisitor || 0);
+      if (ownerGain > 0 || visitorGain > 0) {
+        gain.lamp = { ownerTeam, ownerGain, visitorGain };
+        this.log(state, `🪔 ${team.icon}${team.name} 路过${ownerTeam.icon}${ownerTeam.name}点亮的法灯,${ownerTeam.name} 随喜获得 ${ownerGain} 点功德。`);
+      }
+    }
+    return gain.arrival > 0 || gain.lamp || gain.story ? gain : null;
+  },
+
+  drawVillageCard(state, station) {
+    if (!state.villageDecks) state.villageDecks = makeVillageDecks();
+    const decks = state.villageDecks;
+    const deck = decks[station.region] || decks[station.route] || decks.land;
+    return deck ? drawFromDeck(deck) : { title: '歇脚', text: '商队在村里歇了歇脚。', effect: { merit: 1 } };
   },
 
   targetPosition(state) {
@@ -329,7 +471,8 @@ DR.Game = {
       : Math.max(team.position - state.lastRoll, 0);
   },
 
-  // 前进 + 落地结算。stopAt:可选,提前停下的位置(必须是这次路过的城市)。返回描述对象供 UI 渲染。
+  // 前进 + 落地结算。stopAt:可选,在路过的圣地提前停下(必须是 planMove().stops 里的位置)。
+  // 返回描述对象供 UI 渲染;passed 列出一路上路过的城带来的收获(开路功德、别队法灯)。
   moveAndResolve(state, stopAt) {
     const team = this.activeTeam(state);
 
@@ -340,49 +483,69 @@ DR.Game = {
     }
 
     const path = pathFor(team.route);
-    const early = stopAt != null && this.citiesOnTheWay(state).some(c => c.position === stopAt);
-    team.position = early ? stopAt : this.targetPosition(state);
-    if (early) this.log(state, `${team.icon}${team.name} 选择在${path[stopAt - 1].name}进城停留。`);
+    const plan = this.planMove(state);
+    const early = stopAt != null && plan.stops.some(c => c.position === stopAt);
+    const dest = early ? stopAt : plan.target;
+    const from = team.position;
+    const step = team.direction === 'out' ? 1 : -1;
+    const passed = [];
+    for (let p = from + step; p !== dest; p += step) {
+      if (p <= 0 || p > path.length) break;
+      if (path[p - 1].type === 'village') continue;
+      const gain = this.passThrough(state, team, p, path[p - 1]);
+      if (gain) passed.push(gain);
+    }
+    team.position = dest;
+    team.stepsTaken = (team.stepsTaken || 0) + Math.abs(dest - from);
+    if (early) this.log(state, `${team.icon}${team.name} 选择在${path[stopAt - 1].name}停下结缘。`);
 
     if (team.direction === 'back' && team.position === 0) {
+      // 名次按"第几轮回来"算:同一轮回来的队伍名次相同(不会因为本轮先掷骰就多拿奖励)
+      const order = state.teams.filter(t => t.completed && (t.homeRound == null || t.homeRound < state.round)).length;
       team.completed = true;
-      const bonus = this.changeMerit(state, team, DR.CONFIG.roundTripBonus);
-      this.log(state, `🎉 ${team.icon}${team.name} 回到长安,功德圆满!获得 ${bonus} 点功德奖励。`);
+      team.homeOrder = order;
+      team.homeRound = state.round;
+      const bonus = this.changeMerit(state, team, homeBonusFor(order));
+      this.log(state, `🎉 ${team.icon}${team.name} 第 ${order + 1} 个回到长安,功德圆满!获得 ${bonus} 点功德奖励。`);
       const startsFinalRound = state.options.endMode === 'first' && !state.finalRound;
       if (startsFinalRound) {
         state.finalRound = true;
         this.log(state, `🏁 ${team.name} 第一个回到长安:这一轮结束后游戏结算。`);
       }
-      return { arrivedHome: true, team, startsFinalRound };
+      return { arrivedHome: true, team, startsFinalRound, passed, homeOrder: order, homeBonus: bonus };
     }
 
     const station = path[team.position - 1];
     const visitKey = team.route + ':' + team.position;
     const firstTime = !team.visited.has(visitKey);
+
+    const result = { team, station, visitKey, firstTime, passed, canTrade: station.type === 'site' || station.type === 'final' };
+
+    // 沿途村落:抽一张"村落见闻"(一句丝路生活小知识 + 一点小奖励),读完就轮到下一队
+    if (station.type === 'village') {
+      result.type = 'village';
+      result.card = this.drawVillageCard(state, station);
+      Object.assign(result, this.applyEffect(state, team, result.card.effect));
+      this.log(state, `🏡 ${team.icon}${team.name} 在${station.name}歇脚:${result.card.title}`);
+      return Object.assign(result, { canTrade: false, canCrossover: false, lampCost: null, canLightLamp: false });
+    }
+
     if (firstTime) {
       team.visited.add(visitKey);
+      if (team.position !== path.length) {
+        // 终点站的奖励已包含在剧情卡中,避免重复给
+        const bonus = this.changeMerit(state, team, arrivalBonusFor(team.route));
+        if (bonus > 0) this.log(state, `${team.icon}${team.name} 初至 ${station.name},获得 ${bonus} 点开路功德。`);
+        result.arrivalBonus = bonus;
+      }
     }
 
-    const result = { team, station, visitKey, firstTime, canTrade: station.type === 'site' || station.type === 'final' };
-
-    // 沿途小村落只是歇脚点:不抽卡、不答题、没有开路功德,直接轮到下一队
-    if (station.type === 'village') {
-      this.log(state, `${team.icon}${team.name} 在${station.name}歇脚。`);
-      return { team, station, visitKey, firstTime, type: 'village', canTrade: false, canCrossover: false, lampCost: null, canLightLamp: false };
-    }
-
-    if (firstTime && team.position !== path.length) {
-      // 终点站的奖励已包含在剧情卡中,避免重复给
-      const bonus = this.changeMerit(state, team, DR.CONFIG.firstArrivalBonus);
-      if (bonus > 0) this.log(state, `${team.icon}${team.name} 初至 ${station.name},获得 ${bonus} 点开路功德。`);
-    }
-
-    // 途经其他队伍点亮的法灯:双方都能获得一点随喜功德(正向的"擦肩而过"互动)
+    // 停在其他队伍点亮的法灯:双方都能获得随喜功德(正向的"结缘"互动)
     const lampOwner = state.lampOwners[visitKey];
     if (lampOwner && lampOwner.teamId !== team.id) {
       const ownerTeam = state.teams[lampOwner.teamId];
-      const visitorGain = this.changeMerit(state, team, DR.CONFIG.lampPassBonusVisitor);
-      const ownerGain = this.changeMerit(state, ownerTeam, DR.CONFIG.lampPassBonusOwner);
+      const visitorGain = this.changeMerit(state, team, DR.CONFIG.lampLandVisitor);
+      const ownerGain = this.changeMerit(state, ownerTeam, DR.CONFIG.lampLandOwner);
       if (visitorGain > 0 || ownerGain > 0) {
         this.log(state, `🪔 落脚在${ownerTeam.icon}${ownerTeam.name}点亮的法灯,${team.icon}${team.name} 随喜获得 ${visitorGain} 点功德,${ownerTeam.name} 也获得 ${ownerGain} 点。`);
         result.lampBonus = { ownerTeam, visitorGain, ownerGain };
@@ -390,10 +553,11 @@ DR.Game = {
     }
 
     const opts = state.options || {};
-    if (station.type === 'story' || station.type === 'final') {
+    // 剧情只在第一次到访时触发;归途再停在剧情站,就和普通驿站一样抽卡(剧情奖励不会领两次)
+    if ((station.type === 'story' && firstTime) || station.type === 'final') {
       result.type = 'story';
       result.story = station.story;
-      this.applyEffect(state, team, station.story.effect);
+      Object.assign(result, this.applyEffect(state, team, station.story.effect));
       if (station.type === 'final' && team.direction === 'out') {
         team.direction = 'back';
         result.turnedAround = true;
@@ -414,7 +578,7 @@ DR.Game = {
       result.type = 'event';
       const deck = team.route === 'land' ? state.landDeck : state.seaDeck;
       result.card = drawFromDeck(deck);
-      this.applyEffect(state, team, result.card.effect);
+      Object.assign(result, this.applyEffect(state, team, result.card.effect));
       if (result.card.effect && result.card.effect.merit < 0 && result.card.positive) {
         this.log(state, `💡 ${result.card.positive}`);
       }
@@ -524,6 +688,7 @@ DR.Game = {
     state.bank += cost;
     state.lampOwners[key] = { teamId: team.id, stationName: station.name };
     team.lampsLit++;
+    team.lampMerit = (team.lampMerit || 0) + cost;
     this.log(state, `${team.icon}${team.name} 在${station.name}点亮了一盏法灯 🪔(花费 ${cost} 功德)`);
     return { ok: true, cost };
   },
@@ -551,10 +716,12 @@ DR.Game = {
     return state.teams.every(t => t.completed);
   },
 
-  // 是否该结算了(不含老师手动结束):全部回到长安;或"第一队回来就结束"模式下,最后一轮已经打完
+  // 是否该结算了(不含老师手动结束):都在这一轮打完时才结算,保证每队掷骰(或讲经)的次数一样多。
+  //   全部回到长安 → 'allHome';"第一队回来就结束"模式下,有队伍回来的那一轮打完 → 'firstHome'
   shouldEnd(state, startingNewRound) {
+    if (!startingNewRound) return null;
     if (this.allCompleted(state)) return 'allHome';
-    if (state.finalRound && startingNewRound) return 'firstHome';
+    if (state.finalRound) return 'firstHome';
     return null;
   },
 
@@ -564,7 +731,7 @@ DR.Game = {
 
   autoResolveTurn(state) {
     const team = this.activeTeam(state);
-    const gain = this.changeMerit(state, team, 1);
+    const gain = this.changeMerit(state, team, DR.CONFIG.homeTurnMerit != null ? DR.CONFIG.homeTurnMerit : 1);
     this.log(state, `${team.icon}${team.name} 已功德圆满,在长安弘法讲经 +${gain}`);
   },
 
@@ -594,8 +761,24 @@ DR.Game = {
     return DR.PARAMITAS.reduce((sum, p) => sum + p.value * team.backpack[p.key], 0) + (fullSet ? DR.CONFIG.fullSetBonus : 0);
   },
 
+  // 到访过的城市数(旧存档的到访记录里还混着村落,这里只数城)
+  citiesVisited(team) {
+    let n = 0;
+    team.visited.forEach(key => {
+      const [route, pos] = key.split(':');
+      const st = pathFor(route)[+pos - 1];
+      if (st && st.type !== 'village') n++;
+    });
+    return n;
+  },
+
+  // 法灯长明:点灯时供奉的功德一直算在总功德里,不会白白花掉
+  lampValue(team) {
+    return team.lampMerit || 0;
+  },
+
   totalScore(team) {
-    return team.merit + this.fragmentValue(team);
+    return team.merit + this.fragmentValue(team) + this.lampValue(team);
   },
 
   // 某队在哪些站点点亮过法灯(用于队伍详情面板展示)。
@@ -617,12 +800,14 @@ DR.Game = {
       const fragCount = backpackCount(team);
       const fullSet = hasFullSet(team);
       const fragValue = this.fragmentValue(team);
+      const lampValue = this.lampValue(team);
       return {
         team,
         fragCount,
         fullSet,
         fragValue,
-        total: team.merit + fragValue,
+        lampValue,
+        total: team.merit + fragValue + lampValue,
       };
     }).sort((a, b) => b.total - a.total);
 
@@ -633,9 +818,11 @@ DR.Game = {
     let bestVigorIdx = -1, bestVigor = -1;
     let bestLampIdx = -1, bestLamp = 0;
     let bestChallengeIdx = -1, bestChallenge = 0;
+    // 精进奖看"一共走了多少步"(旧存档没有步数时退回看掷骰次数);掷骰次数大家几乎一样,比它总会平局
+    const vigorOf = t => (t.stepsTaken || 0) * 100 + (t.turnsTaken || 0);
     rows.forEach((r, i) => {
       if (r.team.correctAnswers > bestWisdom) { bestWisdom = r.team.correctAnswers; bestWisdomIdx = i; }
-      if (r.team.turnsTaken > bestVigor) { bestVigor = r.team.turnsTaken; bestVigorIdx = i; }
+      if (vigorOf(r.team) > bestVigor) { bestVigor = vigorOf(r.team); bestVigorIdx = i; }
       if (r.team.lampsLit > bestLamp) { bestLamp = r.team.lampsLit; bestLampIdx = i; }
       if ((r.team.challengesDone || 0) > bestChallenge) { bestChallenge = r.team.challengesDone; bestChallengeIdx = i; }
       if (r.team.completed) badges[i].push('🌸 圆满奖(完成往返)');
@@ -681,6 +868,7 @@ DR.Game = {
         sea: deckToJSON(state.seaDeck),
         question: deckToJSON(state.questionDeck),
         challenge: deckToJSON(state.challengeDeck),
+        village: villageDecksToJSON(state.villageDecks),
       },
       options: state.options,
       journey: state.journey,
@@ -700,6 +888,9 @@ DR.Game = {
         visited: new Set(t.visited || []),
         backpack: Object.assign(emptyBackpack(), t.backpack || {}),
         challengesDone: t.challengesDone || 0,
+        stepsTaken: t.stepsTaken || 0,
+        homeOrder: t.homeOrder != null ? t.homeOrder : null,
+        homeRound: t.homeRound != null ? t.homeRound : null,
       })),
       activeIndex: Math.min(data.activeIndex || 0, data.teams.length - 1),
       round: data.round || 1,
@@ -719,6 +910,7 @@ DR.Game = {
       seaDeck: deckFromJSON(data.decks && data.decks.sea, DR.SEA_EVENTS),
       questionDeck: deckFromJSON(data.decks && data.decks.question, DR.QUESTIONS),
       challengeDeck: deckFromJSON(data.decks && data.decks.challenge, DR.CHALLENGES),
+      villageDecks: villageDecksFromJSON(data.decks && data.decks.village),
       options: data.options || {},
       // 旧存档没有村落:按"短途"还原,棋子位置才对得上
       journey: data.journey || { length: 'short', seed: 1 },
@@ -729,6 +921,17 @@ DR.Game = {
       soundOn: true,
     };
     useBoard(state);
+    // 旧存档没有记录供在法灯里的功德:按当年实际付的点灯花费补上(旧版驿站 4、圣地 7)
+    state.teams.forEach(t => {
+      if (t.lampMerit != null) return;
+      t.lampMerit = Object.keys(state.lampOwners)
+        .filter(k => state.lampOwners[k].teamId === t.id)
+        .reduce((sum, k) => {
+          const [route, pos] = k.split(':');
+          const st = pathFor(route)[+pos - 1];
+          return sum + (st ? (st.type === 'site' ? 7 : 4) : 0);
+        }, 0);
+    });
     return state;
   },
 };

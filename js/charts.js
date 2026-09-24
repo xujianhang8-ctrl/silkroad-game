@@ -184,15 +184,15 @@ function renderTrendChart(container, state) {
   });
 }
 
-// ---------------- 排名条形图:功德 + 残页价值 ----------------
+// ---------------- 排名条形图:功德 + 残页价值 + 法灯 ----------------
 
 function renderRanking(container, state) {
-  const rows = state.teams.map(t => ({ t, merit: t.merit, frag: DR.Game.fragmentValue(t), total: DR.Game.totalScore(t) }))
+  const rows = state.teams.map(t => ({ t, merit: t.merit, frag: DR.Game.fragmentValue(t), lamp: DR.Game.lampValue(t), total: DR.Game.totalScore(t) }))
     .sort((a, b) => b.total - a.total);
   const max = Math.max(10, ...rows.map(r => r.total));
   const medal = ['🥇', '🥈', '🥉'];
   container.innerHTML = `
-    <div class="rank-legend"><span><i class="rk-key solid"></i>手中功德</span><span><i class="rk-key light"></i>残页价值(浅色)</span></div>
+    <div class="rank-legend"><span><i class="rk-key solid"></i>手中功德</span><span><i class="rk-key light"></i>残页价值(浅色)</span><span><i class="rk-key lamp"></i>法灯(虚线)</span></div>
     ${rows.map((r, i) => `
       <div class="rank-row" tabindex="0" data-i="${i}">
         <span class="rank-medal">${medal[i] || '#' + (i + 1)}</span>
@@ -201,6 +201,7 @@ function renderRanking(container, state) {
           <span class="rank-bar" style="width:calc((100% - 52px) * ${(r.total / max).toFixed(4)})">
             ${r.merit > 0 ? `<span class="rank-seg solid" style="flex:${r.merit};background:${r.t.color}"></span>` : ''}
             ${r.frag > 0 ? `<span class="rank-seg light" style="flex:${r.frag};background:${r.t.color}"></span>` : ''}
+            ${r.lamp > 0 ? `<span class="rank-seg lamp" style="flex:${r.lamp};border-color:${r.t.color}"></span>` : ''}
           </span>
           <span class="rank-total">${r.total}</span>
         </span>
@@ -212,6 +213,7 @@ function renderRanking(container, state) {
       showTip(e && e.clientX != null ? e.clientX : box.right - 60, e && e.clientY != null ? e.clientY : box.top, `${r.t.icon} ${r.t.name} · 总功德 ${r.total}`, [
         { color: r.t.color, value: String(r.merit), label: '手中功德' },
         { color: r.t.color, value: String(r.frag), label: '残页价值' },
+        { color: r.t.color, value: String(r.lamp), label: '法灯(点灯供奉的功德)' },
       ]);
     };
     el.addEventListener('pointermove', show);
@@ -316,7 +318,7 @@ function renderEnd(state, results, reason) {
       <div class="result-rank">${medal[i] || (i + 1)}</div>
       <div class="result-info">
         <div class="result-name">${r.team.icon} ${esc(r.team.name)}</div>
-        <div class="result-detail">功德 ${r.team.merit} + 残页价值 ${r.fragValue}(${r.fragCount} 张${r.fullSet ? ' · 集齐六度' : ''}) · 🪔 点灯 ${r.team.lampsLit} · 💡 答对 ${r.team.correctAnswers}</div>
+        <div class="result-detail">功德 ${r.team.merit} + 残页价值 ${r.fragValue}(${r.fragCount} 张${r.fullSet ? ' · 集齐六度' : ''})${r.lampValue ? ` + 法灯 ${r.lampValue}(${r.team.lampsLit} 盏)` : ''} · 💡 答对 ${r.team.correctAnswers}</div>
         <div class="result-badges">${r.badges.map(b => `<span class="badge">${esc(b)}</span>`).join('')}</div>
       </div>
       <div class="result-total">${r.total}</div>
@@ -326,13 +328,13 @@ function renderEnd(state, results, reason) {
   // 旅程数据:走势图 + 表格
   renderTrendChart($('end-chart'), state);
   $('end-table-wrap').innerHTML = `<table class="end-table">
-    <thead><tr><th>队伍</th><th>路线</th><th>总功德</th><th>功德</th><th>残页价值</th><th>答对问答</th><th>完成挑战</th><th>点亮法灯</th><th>掷骰次数</th><th>到访站点</th><th>往返</th></tr></thead>
+    <thead><tr><th>队伍</th><th>路线</th><th>总功德</th><th>功德</th><th>残页价值</th><th>法灯</th><th>答对问答</th><th>完成挑战</th><th>前进步数</th><th>到访城市</th><th>往返</th></tr></thead>
     <tbody>${results.map(r => `<tr>
       <td class="coll-team"><i class="rank-dot" style="background:${r.team.color}"></i>${r.team.icon} ${esc(r.team.name)}</td>
       <td>${r.team.route === 'land' ? '🐫 陆路' : '⛵ 海路'}${r.team.hasSwitched ? '(换乘)' : ''}</td>
-      <td><b>${r.total}</b></td><td>${r.team.merit}</td><td>${r.fragValue}</td>
-      <td>${r.team.correctAnswers}</td><td>${r.team.challengesDone || 0}</td><td>${r.team.lampsLit}</td>
-      <td>${r.team.turnsTaken}</td><td>${r.team.visited.size}</td><td>${r.team.completed ? '✅' : '—'}</td></tr>`).join('')}</tbody></table>`;
+      <td><b>${r.total}</b></td><td>${r.team.merit}</td><td>${r.fragValue}</td><td>${r.lampValue}${r.team.lampsLit ? `(${r.team.lampsLit} 盏)` : ''}</td>
+      <td>${r.team.correctAnswers}</td><td>${r.team.challengesDone || 0}</td>
+      <td>${r.team.stepsTaken || 0}</td><td>${DR.Game.citiesVisited(r.team)}</td><td>${r.team.completed ? '✅' : '—'}</td></tr>`).join('')}</tbody></table>`;
 
   // 问答回顾
   const qlog = state.qlog;

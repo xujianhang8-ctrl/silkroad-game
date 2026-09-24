@@ -360,10 +360,10 @@ function wireSetup() {
   $('setup-back-home').addEventListener('click', goHome);
 }
 
-// 预计课堂用时(分钟):队伍数 × 每队平均回合数 × 每回合秒数
+// 预计课堂用时(分钟):队伍数 × 每队平均回合数 × 每回合秒数(村落多的旅程,平均每回合更快)
 function estimateMinutes(journeyKey, endMode, nTeams) {
   const j = DR.JOURNEY_LENGTHS.find(x => x.key === journeyKey) || DR.JOURNEY_LENGTHS[0];
-  return Math.round(nTeams * j.play[endMode === 'all' ? 'all' : 'first'] * DR.CONFIG.secondsPerTurn / 60 / 5) * 5;
+  return Math.round(nTeams * j.play[endMode === 'all' ? 'all' : 'first'] * (j.sec || DR.CONFIG.secondsPerTurn) / 60 / 5) * 5;
 }
 function fmtMinutes(m) {
   if (m < 60) return `约 ${m} 分钟`;
@@ -375,13 +375,11 @@ function renderOptionChoices() {
   const journey = DR.setup.journey || 'long';
   const endMode = DR.setup.endMode || 'first';
   const n = DR.setup.teams.length;
-  $('journey-choices').innerHTML = DR.JOURNEY_LENGTHS.map(j => {
-    const steps = r => { const k = (r === 'land' ? DR.LAND_PATH : DR.SEA_PATH).length; return Math.round(k + k * (j.min + j.max) / 2); };
-    return `<button type="button" class="choice-card ${journey === j.key ? 'on' : ''}" data-journey="${j.key}">
-      <b>${j.label}</b><span>${j.sub}</span><em>陆路约 ${steps('land')} 步 · 海路约 ${steps('sea')} 步</em>
+  $('journey-choices').innerHTML = DR.JOURNEY_LENGTHS.map(j => `
+    <button type="button" class="choice-card ${journey === j.key ? 'on' : ''}" data-journey="${j.key}">
+      <b>${j.label}</b><span>${j.sub}</span><em>陆路、海路单程各 ${j.steps} 步</em>
       <em class="cc-time">⏱ ${n} 队${fmtMinutes(estimateMinutes(j.key, endMode, n))}</em>
-    </button>`;
-  }).join('');
+    </button>`).join('');
   $('endmode-choices').innerHTML = DR.END_MODES.map(m => `
     <button type="button" class="choice-card ${endMode === m.key ? 'on' : ''}" data-endmode="${m.key}">
       <b>${m.label}</b><span>${m.sub}</span><em class="cc-time">⏱ ${fmtMinutes(estimateMinutes(journey, m.key, n))}</em>
@@ -414,7 +412,8 @@ function renderSetupSummary() {
       <span>🎯 课堂挑战${DR.setup.challenges !== false ? '开' : '关'}</span>
       <span>${DR.Store.settings.soundOn ? '🔊 音效开' : '🔇 音效关'}</span>
     </div>
-    ${(!land.length || !sea.length) ? '<p class="sum-tip">💡 小提示:两条路线都有队伍时,课堂上可以对比陆路与海路的不同风光。</p>' : ''}
+    ${(!land.length || !sea.length) ? '<p class="sum-tip">💡 小提示:两条路线都有队伍时,课堂上可以对比陆路与海路的不同风光。</p>'
+      : land.length !== sea.length ? `<p class="sum-tip">💡 小提示:陆路、海路一样长,奖励也配平了。两条路线队伍数一样多时最公平;现在${land.length > sea.length ? '陆路' : '海路'}人多,路上的法灯会被停得多一点。</p>` : ''}
   `;
   const svg = $('setup-preview-map');
   const seen = { land: 0, sea: 0 };

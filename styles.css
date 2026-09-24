@@ -1094,6 +1094,7 @@ button:focus-visible { outline: 3px solid var(--gold-light); outline-offset: 2px
 .rank-legend { display: flex; gap: 14px; font-size: 12px; color: #5a4a30; margin-bottom: 6px; }
 .rk-key { display: inline-block; width: 16px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; background: #6f6556; }
 .rk-key.light { opacity: .42; }
+.rk-key.lamp { background: transparent; border: 2px dashed #6f6556; box-sizing: border-box; }
 .rank-row { display: grid; grid-template-columns: 34px 124px 1fr; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 8px; outline: none; }
 .rank-row:hover, .rank-row:focus-visible { background: #f6efdc; }
 .rank-medal { text-align: center; font-weight: bold; color: #5a4a30; }
@@ -1103,6 +1104,7 @@ button:focus-visible { outline: 3px solid var(--gold-light); outline-offset: 2px
 .rank-bar { display: flex; height: 18px; gap: 2px; min-width: 6px; }
 .rank-seg { height: 100%; min-width: 3px; }
 .rank-seg.light { opacity: .42; }
+.rank-seg.lamp { border: 2px dashed; box-sizing: border-box; background: transparent; }
 .rank-bar .rank-seg:last-child { border-radius: 0 4px 4px 0; }
 .rank-total { font-weight: bold; font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .chart-toolbar { display: flex; align-items: flex-start; gap: 10px; justify-content: space-between; margin-bottom: 6px; }
@@ -1430,7 +1432,7 @@ body.big-text .toast { font-size: 17px; }
 #map-wrap[data-lod="2"] .village-marker .vm-label, .village-marker:hover .vm-label { display: block; }
 
 .choice-card .cc-time { font-style: normal; font-weight: 700; color: var(--terracotta, #b2503b); }
-/* 路过城市时的"进城停留"选择 */
+/* 路过圣地时的"停下结缘"选择 */
 .stop-options { display: grid; gap: 8px; margin: 14px 0 6px; }
 .stop-btn {
   display: flex; align-items: center; gap: 12px; text-align: left; width: 100%;
@@ -1441,3 +1443,25 @@ body.big-text .toast { font-size: 17px; }
 .stop-btn .stop-icon { font-size: 26px; }
 .stop-btn b { display: block; font-size: 18px; }
 .stop-btn small { color: #6d5d44; }
+.stop-offers { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.stop-offer { font-size: 13px; padding: 1px 8px; border-radius: 999px; background: #efe6d2; color: #6d5d44; }
+.stop-offer.missing { background: var(--pc); color: #fff; font-weight: bold; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+
+/* 路过城市、剧情站、法灯时,地图上飘起的"+2 / ⭐ / 🪔"小提示 */
+.float-gain {
+  position: absolute; z-index: 40; pointer-events: none; white-space: nowrap;
+  transform: translate(-50%, -130%) scale(var(--marker-scale, 1));
+  font-weight: bold; font-size: 15px; line-height: 1; color: #1f6b3a;
+  background: #fffdf5; border: 2px solid var(--jade); border-radius: 999px; padding: 3px 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  animation: floatGain 1.4s ease-out forwards;
+}
+.float-gain.fg-story { color: #8a5a00; border-color: var(--gold); }
+.float-gain.fg-lamp { color: #7a4a10; border-color: #e0a030; }
+@keyframes floatGain {
+  0% { opacity: 0; margin-top: 0; }
+  15% { opacity: 1; }
+  100% { opacity: 0; margin-top: -34px; }
+}
+#map-wrap.no-anim .float-gain { animation: floatGainStatic .9s linear forwards; }
+@keyframes floatGainStatic { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }

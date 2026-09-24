@@ -89,7 +89,7 @@ function renderTeamsPanel(state) {
     const rankBadge = medal[rank] || `#${rank + 1}`;
     return `<div class="team-card ${i === state.activeIndex ? 'active' : ''}" data-team-id="${team.id}" style="border-left-color:${team.color}">
       <div class="tc-head">
-        <span class="tc-rank" title="当前排名(功德+残页价值)">${rankBadge}</span>
+        <span class="tc-rank" title="当前排名(功德 + 残页价值 + 法灯)">${rankBadge}</span>
         <span class="tc-name">${team.icon} ${escapeHtml(team.name)}</span>
         <span class="tc-merit">${team.merit} 功德</span>
         <button type="button" class="tc-detail-btn" data-team-id="${team.id}" title="查看队伍详情">🔍</button>
@@ -310,24 +310,34 @@ function renderModal() {
   else if (modalMode === 'stopChoice') renderStopChoiceModal();
 }
 
-// 掷骰后会路过城市时:让队伍选择"进城停留",还是走完全部点数
+// 掷骰后会路过圣地时:让队伍选择"在圣地停下结缘",还是走完全部点数。
+// 别的城路过就好(开路功德照拿、剧情照听),所以只有圣地需要做这个取舍。
 function renderStopChoiceModal() {
   const state = DR.state;
   const team = DR.Game.activeTeam(state);
-  const { cities, target } = modalData;
+  const { plan } = modalData;
   const path = DR.Game.path(team.route);
-  const targetName = target === 0 ? '长安' : path[target - 1].name;
-  const targetIsVillage = target > 0 && path[target - 1].type === 'village';
+  const target = plan.target;
+  const targetSt = target > 0 ? path[target - 1] : null;
+  const targetName = targetSt ? targetSt.name : '长安';
+  const targetNote = !targetSt ? '(功德圆满)' : targetSt.type === 'village' ? '(村落见闻)' : `(${stationKind(targetSt)})`;
   const steps = p => Math.abs(p - team.position);
+  // 每个圣地能结缘哪些残页;本队还没有的那几种标出来,方便大家讨论要不要停
+  const offerChips = st => (st.offers || []).map(k => {
+    const p = DR.PARAMITAS.find(pp => pp.key === k);
+    const missing = !team.backpack[k];
+    return p ? `<span class="stop-offer ${missing ? 'missing' : ''}" style="--pc:${p.color}" title="${missing ? '本队还没有' : '本队已有'}">${p.icon}${p.name}</span>` : '';
+  }).join('');
   box().innerHTML = `
     <div class="card-kicker">🎲 掷出 ${state.lastRoll} 点 ${teamTag(team)}</div>
-    <h2>要进城停留吗?</h2>
-    <p class="modal-text">这次会路过下面的城市。可以在城里停下来(抽卡、结缘、点灯),也可以继续走完 ${state.lastRoll} 步。</p>
+    <h2>要在圣地停下结缘吗?</h2>
+    <p class="modal-text">这次会路过圣地。停下来可以结缘(买、换、兑残页)和点灯;继续走就能多走几步。路过的城一样算到访,开路功德照拿。</p>
     <div class="stop-options">
-      ${cities.map(c => `<button class="stop-btn" data-pos="${c.position}"><span class="stop-icon">${DR.Map.iconFor(c.station)}</span>
-        <span><b>停在 ${escapeHtml(c.station.name)}</b><small>走 ${steps(c.position)} 步 · ${stationKind(c.station)}</small></span></button>`).join('')}
+      ${plan.stops.map(c => `<button class="stop-btn" data-pos="${c.position}"><span class="stop-icon">${DR.Map.iconFor(c.station)}</span>
+        <span><b>停在 ${escapeHtml(c.station.name)}</b><small>走 ${steps(c.position)} 步 · 可结缘:</small><span class="stop-offers">${offerChips(c.station)}</span></span></button>`).join('')}
     </div>
-    <div class="modal-buttons"><button id="stop-continue" class="btn-primary modal-confirm">➜ 继续前进到 ${escapeHtml(targetName)}${targetIsVillage ? '(村落歇脚)' : ''}</button></div>
+    <p class="q-hint">亮起来的残页是本队还没有的。</p>
+    <div class="modal-buttons"><button id="stop-continue" class="btn-primary modal-confirm">➜ 继续前进 ${state.lastRoll} 步到 ${escapeHtml(targetName)}${targetNote}</button></div>
   `;
   const go = stopAt => { hideModal(); moveTeam(stopAt); };
   box().querySelectorAll('.stop-btn').forEach(b => b.addEventListener('click', e => { DR.Audio.click(); go(+e.currentTarget.dataset.pos); }));
@@ -335,7 +345,7 @@ function renderStopChoiceModal() {
 }
 function box() { return $('modal-box'); }
 function stationKind(st) {
-  return { site: '圣地 · 可结缘', story: '剧情站', way: '驿站', final: '终点' }[st.type] || '站点';
+  return { site: '圣地 · 可结缘', story: '剧情站', way: '驿站', final: '终点', village: '村落见闻' }[st.type] || '站点';
 }
 
 function lampBonusLine(result) {
@@ -358,9 +368,13 @@ function renderCardModal() {
   if (data.effect && data.effect.skipNext) effectHtml += `<div class="modal-effect-line neg">下回合暂停一次 ⏸</div>`;
   if (data.effect && data.effect.backpackBonus) {
     const t = data.team;
-    effectHtml += `<div class="modal-effect-line">🎒 行囊扩充${t ? `:现在可装 ${t.backpackCap} 张残页` : ''}</div>`;
+    effectHtml += data.bagAlreadyMax
+      ? `<div class="modal-effect-line">🎒 行囊已经是最大的 ${t ? t.backpackCap : DR.CONFIG.backpackCapacityUpgraded} 格了</div>`
+      : `<div class="modal-effect-line">🎒 行囊扩充${t ? `:现在可装 ${t.backpackCap} 张残页` : ''}</div>`;
   }
-  const kind = data.kind === 'story' ? '⭐ 剧情' : (merit !== null && merit < 0) || (data.effect && data.effect.skipNext) ? '🌧️ 小考验' : '🌤️ 善缘';
+  const kind = data.kind === 'story' ? (data.passing ? '⭐ 途经剧情' : '⭐ 剧情')
+    : data.kind === 'village' ? '🏡 村落见闻'
+    : (merit !== null && merit < 0) || (data.effect && data.effect.skipNext) ? '🌧️ 小考验' : '🌤️ 善缘';
   box.innerHTML = `
     <div class="card-kicker">${kind}${data.stationName ? ' · ' + escapeHtml(data.stationName) : ''}${data.team ? teamTag(data.team) : ''}</div>
     <h2>${escapeHtml(data.title)}</h2>
@@ -368,23 +382,27 @@ function renderCardModal() {
     <div class="modal-effects">${effectHtml}</div>
     ${data.positive ? `<p class="modal-positive-note">💡 ${escapeHtml(data.positive)}</p>` : ''}
     ${data.turnedAround ? `<p class="modal-positive-note">🔄 已抵达终点,商队即将踏上归途,把智慧带回长安!</p>` : ''}
-    ${lampBonusLine(pendingPostModal)}
-    <div class="modal-buttons"><button id="modal-confirm-btn" class="btn-primary modal-confirm">确定</button></div>
+    ${data.passing ? '<p class="q-hint">商队路过这里,听完故事继续赶路</p>' : lampBonusLine(pendingPostModal)}
+    <div class="modal-buttons"><button id="modal-confirm-btn" class="btn-primary modal-confirm">${data.passing ? '继续赶路' : '确定'}</button></div>
   `;
   $('modal-confirm-btn').addEventListener('click', () => {
     hideModal();
-    DR.UI.afterLandingModalClosed(pendingPostModal);
+    if (data.then) data.then();
+    else DR.UI.afterLandingModalClosed(pendingPostModal);
   });
 }
 
 function renderHomeModal() {
   const data = modalData;
   const box = $('modal-box');
+  const place = data.homeOrder != null ? `第 ${data.homeOrder + 1} 个` : '';
   box.innerHTML = `
     <div class="home-celebrate">🎉</div>
     <h2>功德圆满!</h2>
-    <p class="modal-text">${data.team.icon} ${escapeHtml(data.team.name)} 完成了往返旅程,平安回到长安,将佛法带回了故乡!</p>
-    <div class="modal-effects"><div class="modal-effect-line">往返奖励 +${DR.CONFIG.roundTripBonus} 功德</div></div>
+    <p class="modal-text">${data.team.icon} ${escapeHtml(data.team.name)} ${place}完成了往返旅程,平安回到长安,将佛法带回了故乡!</p>
+    <div class="modal-effects"><div class="modal-effect-line">往返奖励 +${data.homeBonus != null ? data.homeBonus : DR.CONFIG.homeBonuses[0]} 功德${place ? `(${place}回来)` : ''}</div></div>
+    ${DR.state && DR.state.options.endMode === 'all' && !DR.Game.allCompleted(DR.state)
+      ? `<p class="modal-positive-note">🏯 在其他队伍回来之前,每一轮在长安弘法讲经 +${DR.CONFIG.homeTurnMerit} 功德。</p>` : ''}
     <div class="modal-buttons"><button id="modal-confirm-btn" class="btn-primary modal-confirm">太好了!</button></div>
   `;
   $('modal-confirm-btn').addEventListener('click', hideModal);
@@ -427,8 +445,8 @@ function renderTeamDetailModal() {
       <div class="td-stat"><b>${fragValue}</b><span>残页价值</span></div>
       <div class="td-stat"><b>${team.correctAnswers}</b><span>答对问答</span></div>
       <div class="td-stat"><b>${team.challengesDone || 0}</b><span>完成挑战</span></div>
-      <div class="td-stat"><b>${team.lampsLit}/${DR.CONFIG.lampMaxPerTeam}</b><span>点亮法灯</span></div>
-      <div class="td-stat"><b>${team.visited.size}</b><span>到访站点</span></div>
+      <div class="td-stat"><b>${team.lampsLit}/${DR.CONFIG.lampMaxPerTeam}</b><span>点亮法灯${team.lampsLit ? `(值 ${DR.Game.lampValue(team)})` : ''}</span></div>
+      <div class="td-stat"><b>${DR.Game.citiesVisited(team)}</b><span>到访城市</span></div>
     </div>
     <h3 class="td-subhead">🎴 六度残页行囊(${DR.Game.backpackTotal(team)}/${team.backpackCap})${fullSet ? ' · 已集齐!' : ''}</h3>
     <div class="td-frag-list">${fragRows}</div>
@@ -639,14 +657,21 @@ function renderRulesDynamicContent() {
       `).join('')}
     `;
   }
+  const c = DR.CONFIG;
   const lampList = $('rules-lamp-list');
   if (lampList && !lampList.childElementCount) {
     lampList.innerHTML = `
-      <li>在<b>普通驿站</b>点灯花费 <b>${DR.CONFIG.lampCostWay}</b> 功德,在<b>圣地</b>点灯花费 <b>${DR.CONFIG.lampCostSite}</b> 功德(人气更旺、更贵)。</li>
-      <li>每队最多能点亮 <b>${DR.CONFIG.lampMaxPerTeam}</b> 盏法灯,一个站点先到先得,点亮后地图上会显示你队伍颜色的 🪔。</li>
-      <li>之后别的队伍停在(落脚于)你点亮法灯的站点,你会获得 <b>${DR.CONFIG.lampPassBonusOwner}</b> 点随喜功德,落脚的队伍自己也会获得 <b>${DR.CONFIG.lampPassBonusVisitor}</b> 点——双方都开心,不会互相扣分。</li>
+      <li>在<b>普通驿站</b>点灯花费 <b>${c.lampCostWay}</b> 功德,在<b>圣地</b>点灯花费 <b>${c.lampCostSite}</b> 功德(人气更旺、更贵)。</li>
+      <li><b>法灯长明</b>:点灯花的功德"供"在灯里,一直算在总功德里,结算时一分不少——所以点灯永远不会亏。</li>
+      <li>每队最多能点亮 <b>${c.lampMaxPerTeam}</b> 盏法灯,一个站点先到先得,点亮后地图上会显示你队伍颜色的 🪔。</li>
+      <li>之后别的队伍<b>停在</b>你点亮法灯的站点,你会获得 <b>${c.lampLandOwner}</b> 点随喜功德,停下的队伍自己也会获得 <b>${c.lampLandVisitor}</b> 点——双方都开心,不会互相扣分。${c.lampPassOwner ? `别队只是路过,你也能得到 <b>${c.lampPassOwner}</b> 点。` : ''}</li>
     `;
   }
+  const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+  setText('rules-arrival-land', c.firstArrivalBonus);
+  setText('rules-arrival-sea', c.firstArrivalBonusSea != null ? c.firstArrivalBonusSea : c.firstArrivalBonus);
+  setText('rules-home-bonuses', (c.homeBonuses || [15]).join(' / '));
+  setText('rules-home-turn', c.homeTurnMerit);
   const bagBase = $('rules-bag-base');
   if (bagBase) bagBase.textContent = DR.CONFIG.backpackCapacityBase;
   const bagMax = $('rules-bag-max');
@@ -791,12 +816,39 @@ function onRollClick() {
 
 function onRolled() {
   const state = DR.state;
-  const cities = DR.Game.citiesOnTheWay(state);
-  if (cities.length) {
-    showModal('stopChoice', { cities, target: DR.Game.targetPosition(state) });
+  const plan = DR.Game.planMove(state);
+  if (plan.stops.length) {
+    showModal('stopChoice', { plan });
     return;
   }
   moveTeam(null);
+}
+
+// 路过的城带来的收获:开路功德(路过也算到访)、别队的法灯 —— 汇总成一两条提示
+function announcePassed(result) {
+  const team = result.team;
+  const passed = result.passed || [];
+  const arrivals = passed.filter(g => g.arrival > 0);
+  if (arrivals.length) {
+    const total = arrivals.reduce((sum, g) => sum + g.arrival, 0);
+    toast(`🚩 ${team.icon}${escapeHtml(team.name)} 路过 ${arrivals.map(g => escapeHtml(g.station.name)).join('、')}:开路功德 +${total}`, 'good');
+  }
+  passed.filter(g => g.lamp).forEach(g => {
+    toast(`🪔 路过${g.lamp.ownerTeam.icon}${escapeHtml(g.lamp.ownerTeam.name)}的法灯,${escapeHtml(g.lamp.ownerTeam.name)} 随喜 +${g.lamp.ownerGain}`, 'info');
+  });
+}
+
+// 一次走过好几个剧情站时,按顺序一张一张补放剧情卡,放完再处理落脚点
+function showPassedStories(stories, team, done) {
+  const next = () => {
+    const g = stories.shift();
+    if (!g) { done(); return; }
+    DR.Audio.good();
+    const s = g.story;
+    showModal('card', { kind: 'story', passing: true, title: s.story.title, text: s.story.text, effect: s.story.effect,
+      bagExpanded: s.bagExpanded, bagAlreadyMax: s.bagAlreadyMax, stationName: g.station.name, team, then: next });
+  };
+  next();
 }
 
 async function moveTeam(stopAt) {
@@ -816,16 +868,32 @@ async function moveTeam(stopAt) {
     return;
   }
 
-  await DR.Map.animateActiveMove(state, fromPos);
+  await DR.Map.animateActiveMove(state, fromPos, result.passed);
   if (state.phase === 'ended' || DR.state !== state) return;
+  announcePassed(result);
+  if (result.passed && result.passed.length) DR.Map.updateVisitedMarks(state);
 
+  const stories = (result.passed || []).filter(g => g.story);
+  if (stories.length) {
+    state.turnPhase = 'landing';
+    renderPhaseTracker(state);
+    pendingPostModal = result;
+    showPassedStories(stories, result.team, () => resolveLanding(result));
+    return;
+  }
+  resolveLanding(result);
+}
+
+function resolveLanding(result) {
+  const state = DR.state;
+  if (!state || state.phase === 'ended') return;
   if (result.arrivedHome) {
     state.turnPhase = 'end';
     renderPhaseTracker(state);
     renderPhaseBanner(state);
     if (result.startsFinalRound) toast(`🏁 ${result.team.icon}${escapeHtml(result.team.name)} 第一个回到长安!这一轮结束后结算`, 'warn');
     DR.Audio.finish();
-    showModal('home', { team: result.team });
+    showModal('home', { team: result.team, homeOrder: result.homeOrder, homeBonus: result.homeBonus });
     showNextOnly();
     return;
   }
@@ -834,24 +902,25 @@ async function moveTeam(stopAt) {
   renderPhaseTracker(state);
   pendingPostModal = result;
   if (result.firstTime) DR.Map.updateVisitedMarks(state);
+  if (result.arrivalBonus) DR.Map.floatGain(result.team.route, result.team.position, `+${result.arrivalBonus}`);
 
-  // 沿途村落:只是歇脚,不抽卡、不答题,直接可以轮到下一队
+  // 沿途村落:抽一张村落见闻卡,读完直接轮到下一队(村落没有集市)
   if (result.type === 'village') {
-    toast(`🏡 ${result.team.icon}${escapeHtml(result.team.name)} 在${escapeHtml(result.station.name)}歇脚`, 'info');
-    state.turnPhase = 'end';
-    renderAll();
-    showActionArea([]);
-    showNextOnly();
+    DR.Audio.good();
+    showModal('card', { kind: 'village', title: result.card.title, text: result.card.text, effect: result.card.effect, positive: result.card.positive,
+      bagExpanded: result.bagExpanded, bagAlreadyMax: result.bagAlreadyMax, stationName: result.station.name, team: result.team });
     return;
   }
 
   if (result.type === 'story') {
     DR.Audio.good();
-    showModal('card', { kind: 'story', title: result.story.title, text: result.story.text, effect: result.story.effect, turnedAround: result.turnedAround, stationName: result.station.name, team: result.team });
+    showModal('card', { kind: 'story', title: result.story.title, text: result.story.text, effect: result.story.effect, turnedAround: result.turnedAround,
+      bagExpanded: result.bagExpanded, bagAlreadyMax: result.bagAlreadyMax, stationName: result.station.name, team: result.team });
   } else if (result.type === 'event') {
     const merit = result.card.effect.merit;
     if (typeof merit === 'number' && merit < 0) DR.Audio.trial(); else DR.Audio.good();
-    showModal('card', { title: result.card.title, text: result.card.text, effect: result.card.effect, positive: result.card.positive, stationName: result.station.name, team: result.team });
+    showModal('card', { title: result.card.title, text: result.card.text, effect: result.card.effect, positive: result.card.positive,
+      bagExpanded: result.bagExpanded, bagAlreadyMax: result.bagAlreadyMax, stationName: result.station.name, team: result.team });
   } else if (result.type === 'question') {
     DR.Audio.page();
     showModal('question', { question: result.question });
@@ -867,7 +936,8 @@ function afterLandingModalClosed(result) {
   const state = DR.state;
   if (!state || state.phase === 'ended') return;
   if (DR.Game.bankEmpty(state)) { DR.UI.finishGame('bankEmpty'); return; }
-  state.turnPhase = 'market';
+  // 村落没有集市:读完见闻卡就是回合结束
+  state.turnPhase = result && result.type === 'village' ? 'end' : 'market';
   marketResult = result;
   renderPhaseTracker(state);
   renderTeamsPanel(state);
