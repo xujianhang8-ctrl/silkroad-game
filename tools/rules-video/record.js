@@ -86,13 +86,20 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
     };
   });
 
-  // ---------- prepare a game (5 default teams: land/sea alternating) ----------
+  // ---------- prepare a game (4 teams: land/sea alternating) ----------
   await p.click('#home-new'); await p.waitForTimeout(300);
-  await p.evaluate(() => { DR.setup.teams = DR.setup.teams.slice(0, 4); DR.setup.journey = 'long'; DR.setup.endMode = 'first'; });
+  await p.evaluate(() => { DR.setup.teams = DR.setup.teams.slice(0, 4); DR.setup.journey = 'normal'; DR.setup.endMode = 'first'; });
   await p.evaluate(() => { document.getElementById('wizard-next').click(); document.getElementById('wizard-next').click(); });
   await p.waitForTimeout(300);
   await p.evaluate(() => document.getElementById('btn-start-game').click());
   await p.waitForTimeout(900);
+  // 固定村落布局(种子 2):清水堡 · 陇西驿道 · 红柳坪 · 武威 · 张掖(圣地)· 甜泉坪 …;海路第 5 步是广州港。
+  // 下面每一幕掷的点数都按这个布局来算,讲解里的"路过的城、村落见闻、在圣地停下"才能都演示到。
+  await p.evaluate(() => {
+    DR.state.journey = { length: 'normal', seed: 2, v: 2 };
+    DR.BOARD = DR.Game.buildBoard('normal', 2, 2);
+    DR.Map.renderMapChrome(); DR.Map.initTokens(DR.state);
+  });
   await p.evaluate(() => { DR.Screens.goHome(); });
   await p.waitForTimeout(600);
 
@@ -108,17 +115,17 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
     await ev(([x, y]) => VX.ripple(x, y), xy);
     await loc.click();
   }
-  // 第 n 座城在本局棋盘上的位置(1 起算;村落每局随机,所以要现算)
-  const cityPos = (route, n) => ev(([r, k]) => {
-    let c = 0; const path = DR.Game.path(r);
-    for (let i = 0; i < path.length; i++) if (path[i].type !== 'village' && ++c === k) return i + 1;
-    return 1;
-  }, [route, n]);
+  // 某座城在本局棋盘上的位置(1 起算)
+  const pos = (route, name) => ev(([r, n]) => DR.Game.path(r).findIndex(s => s.name === n) + 1, [route, name]);
   const force = opts => ev(o => Object.assign(DR.state.options, o), opts);
   const pushCard = (deck, title) => ev(([d, t]) => {
     const src = d === 'land' ? DR.LAND_EVENTS : DR.SEA_EVENTS;
     DR.state[d + 'Deck'].draw.push(src.find(c => c.title === t));
   }, [deck, title]);
+  const pushVillage = (region, title) => ev(([r, t]) => {
+    DR.state.villageDecks[r].draw.push(DR.VILLAGE_EVENTS[r].find(c => c.title === t));
+  }, [region, title]);
+  const rollNext = n => ev(v => { window.__nextRoll = v; }, n);
 
   // ---------- screencast capture ----------
   const cdp = await ctx.newCDPSession(p);
@@ -175,31 +182,34 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
     },
     async roll() {
       await ev(() => VX.spot('#dice-area', 10));
-      await force({ questionChance: 0, challenges: false });
-      await pushCard('land', '迷路小插曲');
-      // 掷出的点数正好越过第一座城,演示"进城停留"的选择
-      const first = await cityPos('land', 1);
-      await ev(n => { window.__nextRoll = n; }, Math.min(6, first + 1));
+      // 第一队掷 3:路过陇西驿道(路过也算到访,地图上飘出开路功德),停在后面的小村落,抽一张村落见闻
+      await pushVillage('land', '坎儿井');
+      await rollNext((await pos('land', '陇西驿道')) + 1);
       await sleep(1500);
       await click('#btn-roll');
-      await ev(() => VX.spot(null));
-      await sleep(1400);
+      await ev(() => { VX.spot(null); VX.hideCursor(); });
+      await sleep(3000);
       await ev(() => VX.spot('#modal-box', 6));
-      await sleep(sceneLen('roll') * 1000 - 7200);
-      await ev(() => VX.spot(null));
-      await click('.stop-btn');
-      await ev(() => VX.hideCursor());
     },
     async card() {
-      await sleep(600);
-      await ev(() => VX.spot('#modal-box', 6));
-      await sleep(sceneLen('card') * 1000 - 2800);
       await ev(() => VX.spot(null));
       await click('#modal-confirm-btn');
+      // 第二队(海路)掷到广州港,抽到一张小考验
+      await force({ questionChance: 0, challenges: false });
+      await pushCard('sea', '迷航小插曲');
+      await rollNext(await pos('sea', '广州港'));
+      await click('#btn-next-team');
+      await sleep(900);
+      await click('#btn-roll');
+      await ev(() => VX.hideCursor());
+      await sleep(3200);
+      await ev(() => VX.spot('#modal-box', 6));
     },
     async question() {
+      await ev(() => VX.spot(null));
+      await click('#modal-confirm-btn');
       await force({ questionChance: 1, challenges: false });
-      await ev(n => { window.__nextRoll = n; }, await cityPos('sea', 1));
+      await rollNext(await pos('land', '陇西驿道'));
       await click('#btn-next-team');
       await sleep(900);
       await click('#btn-roll');
@@ -212,7 +222,7 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
     async challenge() {
       await click('#modal-confirm-btn');
       await force({ questionChance: 0, challenges: true, challengeChance: 1 });
-      await ev(n => { window.__nextRoll = n; }, await cityPos('land', 1));
+      await rollNext(await pos('sea', '广州港'));
       await click('#btn-next-team');
       await sleep(800);
       await click('#btn-roll');
@@ -232,32 +242,33 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
       await ev(() => VX.spot('.td-subhead', 10));
       await sleep(5000);
       await ev(() => { VX.spot(null); DR.UI.hideModal(); });
-      // 下一队(海路)上场,掷到占婆圣地
+      // 又轮到第一队:从红柳坪掷 3,会路过武威和张掖(圣地),弹出"要不要在圣地停下结缘"
       await force({ questionChance: 0, challenges: false });
-      await pushCard('sea', '渔民相助');
-      // 第四队停在占婆(圣地)旁边的村落,掷 1 进城
-      await ev(() => {
-        const t = DR.state.teams[3]; t.backpack.dana = 1; t.backpack.sila = 1;
-        t.position = DR.Game.path('sea').findIndex(x => x.name === '占婆'); DR.Map.initTokens(DR.state);
-        window.__nextRoll = 1;
-      });
+      await pushCard('land', '香客相赠');
+      await ev(() => { const t = DR.state.teams[0]; t.backpack.dana = 1; t.backpack.sila = 1; DR.UI.renderTeamsPanel(DR.state); });
+      await rollNext((await pos('land', '张掖·大佛寺')) + 1 - (await ev(() => DR.state.teams[0].position)));
       await click('#btn-next-team');
       await sleep(700);
       await click('#btn-roll');
       await ev(() => VX.hideCursor());
     },
     async market() {
-      await sleep(300);
+      await sleep(600);
+      await ev(() => VX.spot('#modal-box', 6));
+      await sleep(3000);
+      await ev(() => VX.spot(null));
+      await click('.stop-btn');
+      await sleep(1500);
       await click('#modal-confirm-btn');
       await sleep(500);
       await click('#action-area .action-btn >> nth=0');
       await sleep(300);
       await ev(() => VX.spot('#modal-box', 6));
-      await sleep(1700);
+      await sleep(1200);
       await click('.trade-tab-btn[data-tab="swap"]');
-      await sleep(900);
+      await sleep(700);
       await click('.swap-give-btn[data-key="dana"]');
-      await sleep(1300);
+      await sleep(1000);
       await click('.trade-tab-btn[data-tab="sell"]');
       await ev(() => VX.spot('#modal-box', 6));
     },
