@@ -156,7 +156,7 @@ const ISLANDS = {
   lombok: [[770, 575], [784, 573], [786, 581], [772, 583]],
   andaman1: [[405, 398], [409, 396], [411, 408], [406, 410]],
   andaman2: [[409, 418], [413, 416], [414, 428], [409, 429]],
-  nicobar: [[415, 441], [419, 440], [419, 447], [415, 448]],
+  nicobar: [[411, 431], [416, 429], [418, 436], [413, 439]],
 };
 
 // 区域色块(用径向渐变的椭圆柔和地叠在陆地上,再裁剪到陆地范围内)
@@ -281,7 +281,7 @@ const LABELS = [
   ['婆罗洲', 745, 520, 9, 'lbl-island', 1, 0],
   ['苏门答腊', 470, 490, 7, 'lbl-island', 1, 24],
   ['爪 哇', 656, 566, 7, 'lbl-island', 1, 4],
-  ['海南岛', 792, 306, 5.5, 'lbl-island', 1, 0],
+  ['海南岛', 800, 300, 5.5, 'lbl-island', 1, 0],
   ['台湾岛', 1022, 262, 5.5, 'lbl-island', 2, 0],
   ['吕宋', 1062, 330, 6, 'lbl-island', 2, 0],
   ['爪 哇 海', 640, 530, 8, 'lbl-sea-minor', 1, 0],
@@ -302,13 +302,29 @@ const LABELS = [
 
 // ---------------- 站点 / 航线避让 ----------------
 
+// 航线坐标:游戏地图按当前这一局的棋盘画(旧存档里没有后来新加的港口,航线要跟着它走);
+// 主菜单、百科、出发准备(latest=true)按最新的站点表画。
+function routeCoords(route, latest) {
+  const cities = DR.Game && DR.Game.cities ? DR.Game.cities(route, latest) : (route === 'land' ? DR.LAND_PATH : DR.SEA_PATH);
+  return [DR.HOME_COORD, ...cities].map(s => [s.x, s.y]);
+}
+// 不同版本的航线分开缓存(按两条路线的站数区分)
+function routeSig(latest) {
+  return routeCoords('land', latest).length + '/' + routeCoords('sea', latest).length;
+}
+
 let boardPts = null, boardSegs = null, landmarkPts = null;
 function initBoardGeometry() {
-  const land = [DR.HOME_COORD, ...DR.LAND_PATH];
-  const sea = [DR.HOME_COORD, ...DR.SEA_PATH];
+  // 装饰物要同时避开新、旧两版航线:读旧存档时,地图上画的是旧航线
+  const routes = [];
+  ['land', 'sea'].forEach(r => {
+    const all = r === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+    routes.push([DR.HOME_COORD, ...all]);
+    if (DR.Game && DR.Game.citiesFor) routes.push([DR.HOME_COORD, ...DR.Game.citiesFor(r, 2)]);
+  });
   boardPts = [DR.HOME_COORD, ...DR.LAND_PATH, ...DR.SEA_PATH].map(s => [s.x, s.y]);
   boardSegs = [];
-  [land, sea].forEach(path => {
+  routes.forEach(path => {
     for (let i = 0; i < path.length - 1; i++) boardSegs.push([path[i].x, path[i].y, path[i + 1].x, path[i + 1].y]);
   });
   landmarkPts = (DR.LANDMARKS || []).map(l => [l.x, l.y]);
@@ -870,9 +886,9 @@ function wallLayer() {
 }
 
 // withFlow=false 时不画会流动的虚线(游戏地图把流动虚线放在单独的小 SVG 里,见 buildTravelersSvg)
-function routeLayer(withFlow) {
-  const landCoords = [DR.HOME_COORD, ...DR.LAND_PATH].map(s => [s.x, s.y]);
-  const seaCoords = [DR.HOME_COORD, ...DR.SEA_PATH].map(s => [s.x, s.y]);
+function routeLayer(withFlow, latest) {
+  const landCoords = routeCoords('land', latest);
+  const seaCoords = routeCoords('sea', latest);
   const landD = linePath(landCoords, false), seaD = linePath(seaCoords, false);
   let g = `<path class="route-line route-land-casing" d="${landD}"/>`;
   if (withFlow) g += `<path class="route-line route-land" d="${landD}"/>`;
@@ -1092,8 +1108,9 @@ function paperAndFrame() {
 // ---------------- 对外接口 ----------------
 
 const svgCache = {};
+// withText=true:主菜单背景(文字画进 SVG,航线按最新站点表);false:游戏地图(航线按当前棋盘)
 function buildSvg(withText) {
-  const key = withText ? 'text' : 'plain';
+  const key = (withText ? 'text' : 'plain') + ':' + routeSig(withText);
   if (svgCache[key]) return svgCache[key];
   buildShapes();
   svgCache[key] = defsBlock() +
@@ -1104,7 +1121,7 @@ function buildSvg(withText) {
     `<g class="map-water">${waterLayer()}</g>` +
     wallLayer() +
     decoLayer() +
-    `<g class="map-routes">${routeLayer(withText)}</g>` +
+    `<g class="map-routes">${routeLayer(withText, withText)}</g>` +
     (withText ? buildTravelersSvg('smil') : '') +
     (withText ? labelLayerSvg() : '') +
     `<g class="map-chrome">${chromeLayer()}</g>` +
@@ -1116,11 +1133,12 @@ function buildSvg(withText) {
 // 否则只是一张干净的小地图(丝路百科里的"定位图")。
 const miniCache = {};
 function buildMinimap(withView) {
-  const k = withView ? 'v' : 'p';
+  const latest = !withView; // 游戏内鹰眼跟着当前棋盘;百科、出发准备的定位图按最新站点表
+  const k = (withView ? 'v' : 'p') + ':' + routeSig(latest);
   if (miniCache[k]) return miniCache[k];
   const s = buildShapes();
-  const landCoords = [DR.HOME_COORD, ...DR.LAND_PATH].map(p => [p.x, p.y]);
-  const seaCoords = [DR.HOME_COORD, ...DR.SEA_PATH].map(p => [p.x, p.y]);
+  const landCoords = routeCoords('land', latest);
+  const seaCoords = routeCoords('sea', latest);
   let g = `<rect x="0" y="0" width="${W}" height="${H}" fill="#9cc4d0"/>`;
   g += `<path d="${s.landD}" fill="#ecdcb2" stroke="#6b5a3e" stroke-width="3"/>`;
   s.rivers.filter(r => !r.lod).forEach(r => { g += `<path d="${r.d}" fill="none" stroke="#5b93b8" stroke-width="5"/>`; });
@@ -1142,17 +1160,19 @@ function buildMinimap(withView) {
 const travelersCache = {};
 function buildTravelersSvg(mode) {
   mode = mode || 'js';
-  if (travelersCache[mode]) return travelersCache[mode];
-  const landCoords = [DR.HOME_COORD, ...DR.LAND_PATH].map(s => [s.x, s.y]);
-  const seaCoords = [DR.HOME_COORD, ...DR.SEA_PATH].map(s => [s.x, s.y]);
+  const latest = mode !== 'js'; // 'js' 是游戏地图(跟着当前棋盘),'smil' 是主菜单背景
+  const key = mode + ':' + routeSig(latest);
+  if (travelersCache[key]) return travelersCache[key];
+  const landCoords = routeCoords('land', latest);
+  const seaCoords = routeCoords('sea', latest);
   const flow = mode === 'js'
     ? `<path class="route-line route-land" d="${linePath(landCoords, false)}"/><path class="route-line route-sea" d="${linePath(seaCoords, false)}"/>`
     : '';
-  travelersCache[mode] = flow +
+  travelersCache[key] = flow +
     `<path id="dr-route-land" d="${linePath(landCoords, false)}" fill="none" stroke="none"/>` +
     `<path id="dr-route-sea-water" d="${linePath(seaCoords.slice(1), false)}" fill="none" stroke="none"/>` +
     travelersLayer(mode);
-  return travelersCache[mode];
+  return travelersCache[key];
 }
 
 // 游戏地图(prefix 为空):不含 SVG 文字,地名由 labelsHtml() 生成的 HTML 标注层显示;

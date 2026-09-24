@@ -665,11 +665,11 @@ function renderRulesDynamicContent() {
       <li><b>法灯长明</b>:点灯花的功德"供"在灯里,一直算在总功德里,结算时一分不少——所以点灯永远不会亏。</li>
       <li>每队最多能点亮 <b>${c.lampMaxPerTeam}</b> 盏法灯,一个站点先到先得,点亮后地图上会显示你队伍颜色的 🪔。</li>
       <li>之后别的队伍<b>停在</b>你点亮法灯的站点,你会获得 <b>${c.lampLandOwner}</b> 点随喜功德,停下的队伍自己也会获得 <b>${c.lampLandVisitor}</b> 点——双方都开心,不会互相扣分。${c.lampPassOwner ? `别队只是路过,你也能得到 <b>${c.lampPassOwner}</b> 点。` : ''}</li>
+      ${c.lampLonelyRouteMultiplier > 1 ? `<li><b>人少的路线,一盏灯更珍贵</b>:一条路线上只有 ${c.lampLonelyRouteTeams} 队(或更少)时,这条路上的随喜功德 ×${c.lampLonelyRouteMultiplier}。这样陆路、海路队伍数不一样多时,人少那条路也不吃亏。</li>` : ''}
     `;
   }
   const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
-  setText('rules-arrival-land', c.firstArrivalBonus);
-  setText('rules-arrival-sea', c.firstArrivalBonusSea != null ? c.firstArrivalBonusSea : c.firstArrivalBonus);
+  setText('rules-arrival', c.firstArrivalBonus);
   setText('rules-home-bonuses', (c.homeBonuses || [15]).join(' / '));
   setText('rules-home-turn', c.homeTurnMerit);
   const bagBase = $('rules-bag-base');

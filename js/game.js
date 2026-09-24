@@ -23,18 +23,30 @@ function shuffledNames(parts, rand) {
   return names;
 }
 
+// 棋盘版本:新游戏用最新一版;存档里记着自己是哪一版,读档时按那一版还原,棋子和法灯的位置才对得上。
+//   1:每一段随机 min–max 个村落(最早的存档)
+//   2:陆路、海路补到同样的步数,村落按路程分配
+//   3:海路加入 6 个真实港口(站点带 since: 3),两条路线的城市一样多
+const BOARD_VERSION = 3;
+
+// 某一版棋盘上的城市(不含村落):后来加进来的站点(since 比这一版新)不算
+function citiesFor(route, version) {
+  const all = route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+  return all.filter(st => !st.since || st.since <= version);
+}
+
 // 生成本局棋盘:在长安与第一座城之间、以及每两座城之间,随机插入若干个小村落。
 // 村落正好落在两城之间的路线上,因此地图上的路线不用改动。
-// version 2(新游戏):陆路、海路都补到同样的步数(旅程长度的 steps),村落按每一段在地图上的路程分配,
+// version ≥ 2(新游戏):陆路、海路都补到同样的步数(旅程长度的 steps),村落按每一段在地图上的路程分配,
 //   路越远的一段村落越多(再加一点随机,每局都不一样);每个村落带上风土 region,决定村名和见闻卡。
 // version 1(旧存档):每一段随机 min–max 个村落。保留原算法,旧存档才能还原出同一张棋盘。
 function buildBoard(lengthKey, seed, version) {
   const len = DR.JOURNEY_LENGTHS.find(j => j.key === lengthKey) || DR.JOURNEY_LENGTHS[0];
-  if (version === 2 && len.steps) return buildBoardV2(len, seed);
+  if (version >= 2 && len.steps) return buildBoardV2(len, seed, version);
   return buildBoardV1(len, seed);
 }
 
-function buildBoardV2(len, seed) {
+function buildBoardV2(len, seed, version) {
   const rand = mulberry32(seed || 1);
   const pools = {};
   const nameFor = region => {
@@ -44,7 +56,7 @@ function buildBoardV2(len, seed) {
   };
   const board = {};
   ['land', 'sea'].forEach(route => {
-    const cities = route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+    const cities = citiesFor(route, version);
     const total = Math.max(0, len.steps - cities.length);
     let prev = DR.HOME_COORD;
     const weights = cities.map(city => {
@@ -83,7 +95,7 @@ function buildBoardV1(len, seed) {
   const rand = mulberry32(seed || 1);
   const board = {};
   ['land', 'sea'].forEach(route => {
-    const cities = route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+    const cities = citiesFor(route, 1);
     const parts = DR.VILLAGE_NAME_PARTS[route];
     const names = [];
     parts.prefix.forEach(pf => parts.suffix.forEach(sf => names.push(pf + sf)));
@@ -120,7 +132,7 @@ function useBoard(state) {
 function pathFor(route) {
   const b = DR.BOARD;
   if (b && b[route]) return b[route];
-  return route === 'land' ? DR.LAND_PATH : DR.SEA_PATH;
+  return citiesFor(route, BOARD_VERSION);
 }
 
 function crossoverPos(route) {
@@ -156,10 +168,14 @@ function deckToJSON(deck) {
   return { draw: deck.draw.map(idx), discard: deck.discard.map(idx), size: deck.all.length };
 }
 function deckFromJSON(json, sourceArray) {
-  if (!json || json.size !== sourceArray.length) return makeDeck(sourceArray);
-  const ok = i => Number.isInteger(i) && i >= 0 && i < sourceArray.length;
+  if (!json || !Array.isArray(json.draw) || !Array.isArray(json.discard)) return makeDeck(sourceArray);
+  if (!(json.size <= sourceArray.length)) return makeDeck(sourceArray);
+  const ok = i => Number.isInteger(i) && i >= 0 && i < json.size;
   if (!json.draw.every(ok) || !json.discard.every(ok)) return makeDeck(sourceArray);
-  return { all: sourceArray, draw: json.draw.map(i => sourceArray[i]), discard: json.discard.map(i => sourceArray[i]) };
+  const draw = json.draw.map(i => sourceArray[i]);
+  // 存档之后新版本在最后追加的卡(比如新港口配套的问答):随机洗进还没抽的牌里,已经出过的题不会马上重复
+  sourceArray.slice(json.size).forEach(card => draw.splice(Math.floor(Math.random() * (draw.length + 1)), 0, card));
+  return { all: sourceArray, draw, discard: json.discard.map(i => sourceArray[i]) };
 }
 
 function emptyBackpack() {
@@ -184,10 +200,20 @@ function lampCostFor(station) {
   return station.type === 'site' ? DR.CONFIG.lampCostSite : DR.CONFIG.lampCostWay;
 }
 
-// 开路功德:海路港口少、相隔远,每个新港口多给一点(见 DR.CONFIG)
+// 开路功德:两条路线城市一样多时,每座新城都一样(DR.CONFIG.firstArrivalBonus)。
+// 城市不一样多时(旧存档的海路只有 13 座城,或老师改过站点),城少的路线按比例多给一点,一路下来拿到的差不多。
 function arrivalBonusFor(route) {
+  const base = DR.CONFIG.firstArrivalBonus;
+  const count = r => pathFor(r).filter(st => st.type !== 'village' && st.type !== 'final').length;
+  const mine = count(route), most = Math.max(count('land'), count('sea'));
+  return mine ? Math.round(base * most / mine) : base;
+}
+
+// 法灯随喜的倍数:这条路线上(现在)走的队伍越少,别队停下来的机会就越少,所以每次给得多一些
+function lampMultiplierFor(state, route) {
   const c = DR.CONFIG;
-  return route === 'sea' && c.firstArrivalBonusSea != null ? c.firstArrivalBonusSea : c.firstArrivalBonus;
+  const teamsHere = state.teams.filter(t => t.route === route).length;
+  return c.lampLonelyRouteMultiplier && teamsHere <= (c.lampLonelyRouteTeams || 0) ? c.lampLonelyRouteMultiplier : 1;
 }
 
 // 第 n 个(从 0 起)回到长安的队伍得到的奖励
@@ -231,6 +257,16 @@ DR.Game = {
   // 当前这一局的路线(城市 + 沿途村落);地图、棋子、进度条都用它
   path(route) { return pathFor(route); },
   buildBoard,
+  BOARD_VERSION,
+  citiesFor,
+  // 某条路线上的城市(不含村落)。latest=true:按最新一版的站点表(主菜单、百科、出发准备);
+  // 否则按当前这一局的棋盘(旧存档的海路没有后来加的港口,地图上的航线也要跟着它画)
+  cities(route, latest) {
+    if (latest || !DR.BOARD || !DR.BOARD[route]) return citiesFor(route, BOARD_VERSION);
+    return DR.BOARD[route].filter(st => st.type !== 'village');
+  },
+  arrivalBonusFor,
+  lampMultiplierFor,
 
   // options:{ questionChance, challenges, journey, endMode }(来自设置向导)
   // 没有倒计时:游戏在队伍回到长安时结束(endMode:'all' 全部回来 / 'first' 第一队回来后打完这一轮),
@@ -286,7 +322,7 @@ DR.Game = {
       challengeDeck: makeDeck(DR.CHALLENGES),
       villageDecks: makeVillageDecks(),
       options: opts,
-      journey: { length: opts.journey, seed: 1 + Math.floor(Math.random() * 2147483000), v: 2 },
+      journey: { length: opts.journey, seed: 1 + Math.floor(Math.random() * 2147483000), v: BOARD_VERSION },
       history: [],            // 每轮结束时各队的总功德,用于"战况看板"与结算页的走势图
       qlog: [],               // 本局出现过的智慧问答及作答情况
       log: [],
@@ -446,8 +482,9 @@ DR.Game = {
     const owner = state.lampOwners[key];
     if (owner && owner.teamId !== team.id) {
       const ownerTeam = state.teams[owner.teamId];
-      const ownerGain = this.changeMerit(state, ownerTeam, DR.CONFIG.lampPassOwner || 0);
-      const visitorGain = this.changeMerit(state, team, DR.CONFIG.lampPassVisitor || 0);
+      const mult = lampMultiplierFor(state, team.route);
+      const ownerGain = this.changeMerit(state, ownerTeam, (DR.CONFIG.lampPassOwner || 0) * mult);
+      const visitorGain = this.changeMerit(state, team, (DR.CONFIG.lampPassVisitor || 0) * mult);
       if (ownerGain > 0 || visitorGain > 0) {
         gain.lamp = { ownerTeam, ownerGain, visitorGain };
         this.log(state, `🪔 ${team.icon}${team.name} 路过${ownerTeam.icon}${ownerTeam.name}点亮的法灯,${ownerTeam.name} 随喜获得 ${ownerGain} 点功德。`);
@@ -544,8 +581,9 @@ DR.Game = {
     const lampOwner = state.lampOwners[visitKey];
     if (lampOwner && lampOwner.teamId !== team.id) {
       const ownerTeam = state.teams[lampOwner.teamId];
-      const visitorGain = this.changeMerit(state, team, DR.CONFIG.lampLandVisitor);
-      const ownerGain = this.changeMerit(state, ownerTeam, DR.CONFIG.lampLandOwner);
+      const mult = lampMultiplierFor(state, team.route);
+      const visitorGain = this.changeMerit(state, team, DR.CONFIG.lampLandVisitor * mult);
+      const ownerGain = this.changeMerit(state, ownerTeam, DR.CONFIG.lampLandOwner * mult);
       if (visitorGain > 0 || ownerGain > 0) {
         this.log(state, `🪔 落脚在${ownerTeam.icon}${ownerTeam.name}点亮的法灯,${team.icon}${team.name} 随喜获得 ${visitorGain} 点功德,${ownerTeam.name} 也获得 ${ownerGain} 点。`);
         result.lampBonus = { ownerTeam, visitorGain, ownerGain };

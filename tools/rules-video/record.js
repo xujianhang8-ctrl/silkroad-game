@@ -93,11 +93,11 @@ fs.rmSync('frames', { recursive: true, force: true }); fs.mkdirSync('frames');
   await p.waitForTimeout(300);
   await p.evaluate(() => document.getElementById('btn-start-game').click());
   await p.waitForTimeout(900);
-  // 固定村落布局(种子 2):清水堡 · 陇西驿道 · 红柳坪 · 武威 · 张掖(圣地)· 甜泉坪 …;海路第 5 步是广州港。
+  // 固定村落布局(种子 2,第 3 版棋盘):清水堡 · 陇西驿道 · 红柳坪 · 武威 · 张掖(圣地)· 甜泉坪 …;海路第 4 步是广州港。
   // 下面每一幕掷的点数都按这个布局来算,讲解里的"路过的城、村落见闻、在圣地停下"才能都演示到。
   await p.evaluate(() => {
-    DR.state.journey = { length: 'normal', seed: 2, v: 2 };
-    DR.BOARD = DR.Game.buildBoard('normal', 2, 2);
+    DR.state.journey = { length: 'normal', seed: 2, v: 3 };
+    DR.BOARD = DR.Game.buildBoard('normal', 2, 3);
     DR.Map.renderMapChrome(); DR.Map.initTokens(DR.state);
   });
   await p.evaluate(() => { DR.Screens.goHome(); });

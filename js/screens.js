@@ -403,7 +403,7 @@ function renderSetupSummary() {
     <div class="sum-route"><div class="sum-route-name">🐫 陆路 · ${land.length} 队</div><div class="sum-teams">${land.map(teamChip).join('') || '<em>暂无</em>'}</div>
       <p class="sum-desc">河西走廊 → 西域绿洲 → 翻越葱岭 → 天竺 · 共 ${DR.LAND_PATH.length} 站</p></div>
     <div class="sum-route"><div class="sum-route-name">⛵ 海路 · ${sea.length} 队</div><div class="sum-teams">${sea.map(teamChip).join('') || '<em>暂无</em>'}</div>
-      <p class="sum-desc">广州 → 南海诸国 → 马六甲 → 狮子国 → 天竺 · 共 ${DR.SEA_PATH.length} 站</p></div>
+      <p class="sum-desc">广州 → 南海诸国 → 马六甲海峡 → 孟加拉湾 → 天竺 · 共 ${DR.SEA_PATH.length} 站</p></div>
     <div class="sum-options">
       <span>⏱ 不限时 · ${fmtMinutes(estimateMinutes(DR.setup.journey || 'long', DR.setup.endMode || 'first', teams.length))}</span>
       <span>🏁 ${(DR.END_MODES.find(m => m.key === (DR.setup.endMode || 'first')) || DR.END_MODES[0]).label}时结算</span>
@@ -413,7 +413,7 @@ function renderSetupSummary() {
       <span>${DR.Store.settings.soundOn ? '🔊 音效开' : '🔇 音效关'}</span>
     </div>
     ${(!land.length || !sea.length) ? '<p class="sum-tip">💡 小提示:两条路线都有队伍时,课堂上可以对比陆路与海路的不同风光。</p>'
-      : land.length !== sea.length ? `<p class="sum-tip">💡 小提示:陆路、海路一样长,奖励也配平了。两条路线队伍数一样多时最公平;现在${land.length > sea.length ? '陆路' : '海路'}人多,路上的法灯会被停得多一点。</p>` : ''}
+      : land.length !== sea.length ? `<p class="sum-tip">💡 小提示:陆路、海路一样长、城一样多。两条路线队伍数一样多时最公平;现在${land.length > sea.length ? '陆路' : '海路'}人多,路上的法灯会被停得多一点。</p>` : ''}
   `;
   const svg = $('setup-preview-map');
   const seen = { land: 0, sea: 0 };
