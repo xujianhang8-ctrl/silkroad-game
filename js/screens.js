@@ -29,7 +29,7 @@ function fmtAgo(ts) {
 
 // ================= 浮层管理 =================
 // Esc 按这个顺序关闭最上层的浮层
-const OVERLAYS = ['confirm-overlay', 'video-overlay', 'settings-overlay', 'rules-overlay', 'stats-overlay', 'pause-overlay'];
+const OVERLAYS = ['confirm-overlay', 'photo-overlay', 'video-overlay', 'settings-overlay', 'rules-overlay', 'stats-overlay', 'pause-overlay'];
 function isOpen(id) { const el = $(id); return !!el && !el.classList.contains('hidden'); }
 function openOverlay(id) { $(id).classList.remove('hidden'); }
 function closeOverlay(id) {
@@ -492,6 +492,67 @@ function locatorSvg(points) {
   return `<svg class="locator" viewBox="0 0 1080 640" preserveAspectRatio="xMidYMid meet">${DR.MapArt.minimap(false)}${pins}</svg>`;
 }
 
+// ---- 实景照片(js/photos.js):有照片的条目先显示照片,可以切换到"地图位置";没有照片的仍显示地图 ----
+let codexVisual = 'photo';
+
+function placePhoto(name) {
+  const p = (DR.PLACE_PHOTOS || {})[name];
+  return p && p.file ? p : null;
+}
+
+function photoCredit(p) {
+  const who = [p.author, p.license].filter(Boolean).join(' · ');
+  return who ? '图:' + who : '';
+}
+
+function placeVisual(name, point) {
+  const map = `<div class="cx-map">${locatorSvg([point])}<small>地图上的位置</small></div>`;
+  const photo = placePhoto(name);
+  if (!photo) return map;
+  const view = codexVisual === 'map' ? 'map' : 'photo';
+  const credit = photoCredit(photo);
+  return `
+    <div class="cx-visual" data-view="${view}">
+      <div class="cx-vtabs" role="tablist" aria-label="实景照片或地图位置">
+        <button type="button" class="cx-vtab" role="tab" data-visual="photo" aria-selected="${view === 'photo'}">📷 实景照片</button>
+        <button type="button" class="cx-vtab" role="tab" data-visual="map" aria-selected="${view === 'map'}">🗺️ 地图位置</button>
+      </div>
+      <figure class="cx-photo">
+        <button type="button" class="cx-photo-open" data-photo="${esc(name)}" title="点击看大图">
+          <img src="media/places/${esc(photo.file)}" alt="${esc(photo.caption || name)}"${photo.focus ? ` style="object-position:${esc(photo.focus)}"` : ''}>
+          <span class="cx-photo-zoom">⤢ 看大图</span>
+        </button>
+        <figcaption>${photo.caption ? `<span>${esc(photo.caption)}</span>` : ''}${credit ? `<small>${esc(credit)}</small>` : ''}</figcaption>
+      </figure>
+      ${map}
+    </div>`;
+}
+
+function setCodexVisual(box, view) {
+  codexVisual = view;
+  box.dataset.view = view;
+  box.querySelectorAll('.cx-vtab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.visual === view)));
+}
+
+// 看大图:投影时全班都看得清
+function openPhoto(name) {
+  const p = placePhoto(name);
+  if (!p) return;
+  $('photo-title').textContent = name;
+  $('photo-sub').textContent = p.caption || '';
+  const img = $('photo-big');
+  img.src = 'media/places/' + p.file;
+  img.alt = p.caption || name;
+  const link = (url, text) => url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(text)}</a>` : esc(text);
+  const bits = [];
+  if (p.author) bits.push('作者:' + esc(p.author));
+  if (p.license) bits.push('许可协议:' + link(p.licenseUrl, p.license));
+  if (p.source) bits.push('来源:' + link(p.source, '维基共享资源'));
+  $('photo-credit').innerHTML = bits.join(' · ');
+  openOverlay('photo-overlay');
+  DR.Audio.click();
+}
+
 function offersChips(offers) {
   return (offers || []).map(k => {
     const p = DR.PARAMITAS.find(pp => pp.key === k);
@@ -510,7 +571,7 @@ function renderCodexDetail() {
     html = `
       <div class="cx-hero"><span class="cx-hero-icon">${s.type === 'home' ? '🏯' : stationIcon(s)}</span>
         <div><div class="cx-kicker">${s.type === 'home' ? '起点 · 都城' : typeName(s)}${s.routes ? ' · ' + s.routes.join(' / ') : ''}</div><h2>${esc(s.name)}</h2></div></div>
-      <div class="cx-grid">
+      <div class="cx-grid${placePhoto(s.name) ? ' with-photo' : ''}">
         <div class="cx-text">
           <p class="cx-lead">${esc(s.blurb || '')}</p>
           ${note ? `<div class="cx-note"><b>📜 你知道吗?</b><p>${esc(note)}</p></div>` : ''}
@@ -518,17 +579,17 @@ function renderCodexDetail() {
           ${s.crossover ? `<div class="cx-note"><b>⇄ 换乘点</b><p>每队限一次,可以在这里由陆路改走海路(或由海路改走陆路)。</p></div>` : ''}
           ${s.offers && s.offers.length ? `<div class="cx-offers"><b>🛕 可在此结缘的残页:</b>${offersChips(s.offers)}</div>` : ''}
         </div>
-        <div class="cx-map">${locatorSvg([s])}<small>地图上的位置</small></div>
+        ${placeVisual(s.name, s)}
       </div>`;
   } else if (tab === 'landmarks') {
     const l = (DR.LANDMARKS || []).find(x => x.key === key);
     if (!l) { el.innerHTML = ''; return; }
     html = `
       <div class="cx-hero"><span class="cx-hero-icon">${l.icon}</span><div><div class="cx-kicker">名胜古迹 · ${esc(l.kind)}</div><h2>${esc(l.name)}</h2></div></div>
-      <div class="cx-grid">
+      <div class="cx-grid${placePhoto(l.name) ? ' with-photo' : ''}">
         <div class="cx-text"><p class="cx-lead">${esc(l.blurb)}</p>
           <div class="cx-note"><b>🔍 在游戏里找一找</b><p>把地图放大一些,这个名胜就会出现在地图上,点击它可以看到介绍。</p></div></div>
-        <div class="cx-map">${locatorSvg([l])}<small>地图上的位置</small></div>
+        ${placeVisual(l.name, l)}
       </div>`;
   } else if (tab === 'figures') {
     const f = (DR.FIGURES || []).find(x => x.key === key);
@@ -566,6 +627,11 @@ function renderCodexDetail() {
   }
   el.innerHTML = html;
   el.scrollTop = 0;
+  // 照片文件找不到(比如只拷了 index.html 和 js 文件夹):退回到地图定位
+  el.querySelectorAll('.cx-photo img').forEach(img => img.addEventListener('error', () => {
+    const box = img.closest('.cx-visual');
+    if (box) box.replaceWith(box.querySelector('.cx-map'));
+  }));
 }
 
 const CODEX_TAB_NAMES = { stations: '🗺️ 丝路站点', landmarks: '🏛️ 名胜古迹', figures: '👤 求法高僧', paramitas: '🎴 六度', glossary: '📖 小词典' };
@@ -604,6 +670,7 @@ function openCodex(tab, key) {
   if (isOpen('stats-overlay')) closeOverlay('stats-overlay');
   codexTab = tab || codexTab || 'stations';
   codexKey = key || null;
+  codexVisual = 'photo';
   $('codex-search').value = '';
   renderCodex();
   DR.UI.showScreen('screen-codex');
@@ -649,6 +716,10 @@ function wireCodex() {
     if (first && !$('codex-list').querySelector('.cx-item.on')) first.click();
   });
   $('codex-detail').addEventListener('click', e => {
+    const tabBtn = e.target.closest('[data-visual]');
+    if (tabBtn) { setCodexVisual(tabBtn.closest('.cx-visual'), tabBtn.dataset.visual); DR.Audio.click(); return; }
+    const photoBtn = e.target.closest('[data-photo]');
+    if (photoBtn) { openPhoto(photoBtn.dataset.photo); return; }
     const chip = e.target.closest('[data-goto]');
     if (!chip) return;
     const [tab, ...rest] = chip.dataset.goto.split(':');
@@ -789,7 +860,7 @@ function wireSettings() {
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', () => { closeOverlay(btn.dataset.close); DR.Audio.click(); });
   });
-  ['settings-overlay', 'stats-overlay'].forEach(id => {
+  ['settings-overlay', 'stats-overlay', 'photo-overlay'].forEach(id => {
     $(id).addEventListener('click', e => { if (e.target.id === id) closeOverlay(id); });
   });
 }

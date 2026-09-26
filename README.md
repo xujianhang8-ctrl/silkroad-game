@@ -128,6 +128,7 @@ index.html      页面骨架(主菜单、向导、游戏、结算、百科、荣
 styles.css      全部样式(大字体 / 高对比,适合投影)
 js/data.js      棋盘站点、机缘卡、智慧问答、课堂挑战、六度与队伍预设(纯数据,方便增删)
 js/lore.js      丝路百科资料:名胜古迹、站点补充知识、人物、六度详解、小词典
+js/photos.js    丝路百科的实景照片清单(照片在 media/places/,署名在 media/places/CREDITS.md)
 js/store.js     本地存储:设置、自动存档、荣誉榜
 js/audio.js     Web Audio 实时合成的音效与背景古琴音乐,无需外部音频文件
 js/game.js      游戏状态与规则逻辑(不含 DOM 操作),含存档的序列化
@@ -137,8 +138,9 @@ js/charts.js    战况看板图表、结算页与奖状打印
 js/ui.js        游戏界面:队伍面板、弹窗、回合流程、横幅与提示
 js/screens.js   主菜单、出发准备向导、丝路百科、荣誉榜、设置、暂停菜单
 js/main.js      启动与全局绑定:开局/读档、用时统计、快捷键
-media/          三分钟讲解视频(MP4 + WebM)
+media/          三分钟讲解视频(MP4 + WebM);places/ 里是丝路百科的实景照片
 tools/rules-video/  讲解视频的制作脚本(AI 配音、自动录屏、合成)
+tools/place-photos/ 实景照片的下载脚本(从维基共享资源挑选、缩小、生成署名)
 ```
 
 全部使用原生 HTML/CSS/JavaScript,无构建步骤、无第三方依赖,可直接以 `file://` 方式打开,也可放到任意静态服务器上使用。
@@ -150,6 +152,7 @@ tools/rules-video/  讲解视频的制作脚本(AI 配音、自动录屏、合�
 - 旅程长度:`DR.JOURNEY_LENGTHS` 里的 `steps` 是每条路线单程的步数(陆路、海路相同);`play` / `sec` 用来估算课堂用时。
 - 调整棋盘站点:编辑 `DR.LAND_PATH` / `DR.SEA_PATH`(`x,y` 为 1080×640 地图坐标,`icon` 可覆盖默认图标,`label` 可指定站名在图标的上/下/左/右)。两条路线城市数不一样时,城少的路线每座新城的开路功德会按比例自动多给一点。新加站点时,给它写上 `since: 4`(下一版的编号),再把 `js/game.js` 里的 `BOARD_VERSION` 改成 4,旧存档就还能按原来的站点还原棋盘。
 - 修改百科内容、名胜古迹:编辑 `js/lore.js`。
+- 百科里的实景照片:清单在 `js/photos.js`,照片放在 `media/places/`;换照片或加自己拍的照片见 `tools/place-photos/README.md`。没有照片的条目会显示地图定位。
 - 调整六度残页价格、点灯规则、开路功德、回长安奖励、挑战奖励、功德库等数值:编辑 `DR.PARAMITAS` 与 `DR.CONFIG`(现有数值是用上千局自动对局校准过的,改动开路功德、法灯随喜或 `lampLonelyRoute…` 两项会影响陆路、海路的平衡)。
 - 调整队伍预设:编辑 `DR.TEAM_PRESETS`(最多 6 组);可选图标与颜色在 `DR.TEAM_ICON_CHOICES` / `DR.TEAM_COLOR_CHOICES`。
 - 规则手册里的数值都是实时读取的,改完数据后无需另外修改规则文案。
